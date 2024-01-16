@@ -1,0 +1,25 @@
+.meal {
+	background-color: #77777773;
+	padding: 1vmin;
+	margin: 1vmin auto;
+	border-radius: 24px;
+	max-width: 30vw;
+	position: relative;
+	z-index: 2;
+	cursor: pointer;
+	border: 1px solid black;
+}
+
+.meal li {
+	text-align: left;
+}
+
+.meal-image {
+	width: 100%;
+	height: auto;
+	z-index: 2;
+}
+
+.meal-ingredients {
+	margin: 3 auto;
+}
