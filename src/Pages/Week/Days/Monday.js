@@ -21,6 +21,28 @@ const Monday = () => {
 		setMenuClass("meal")
 	}
 
+	const deleteMeal = () => {
+		setBreakFast()
+		setBreakfastButton("flex")
+	}
+
+	const chooseMeal = e => {
+		switch (e.type) {
+			case 'breakfast': {
+				setBreakFast(e)
+				console.log(Breakfast)
+			} break;
+			case 'Soup': {
+				setBreakFast(e)
+				console.log(Breakfast)
+			} break;
+			default: { console.log("nada") }
+		}
+		setBackdropClass("hidden")
+		setMenuClass("hidden")
+		setBreakfastButton("none")
+	}
+
 	const Breakfast = () => {
 		if (breakfast)
 			return (
@@ -37,36 +59,15 @@ const Monday = () => {
 								</li>
 							)
 						})}
-					</ul>					
+					</ul>
 					<Button type='error' onClick={deleteMeal}>Delete</Button>
 				</div>
 			)
 	}
-	const deleteMeal = () => {
-		setBreakFast()
-		setBreakfastButton("none")
-		setMenuClass("meal")
-	}
-
-	const chooseMeal = e => {
-		switch (e.type) {
-			case 'breakfast': {
-				setBreakFast(e)
-				console.log(Breakfast)
-			} break;
-			case 'soup': {
-				console.log("soup")
-			} break;
-			default: { console.log("nada") }
-		}		
-		setBackdropClass("hidden")
-		setMenuClass("hidden")
-		setBreakfastButton("none")
-	}
 
 	return (
 		<div>
-			{mealsList.filter(meal => meal.type === "breakfast").map(meal => {
+			{mealsList.filter(meal => meal.type === "breakfast" || meal.type === "Soup").map(meal => {
 				return (
 					<div key={meal.id} className={menuClass} onClick={(e) => chooseMeal(meal)}>
 						<img src={meal.image} alt='mealc' />
@@ -85,7 +86,7 @@ const Monday = () => {
 					</div>
 				)
 			})}
-			<div className={backdropClass} onClick={hideMenu}/>
+			<div className={backdropClass} onClick={hideMenu} />
 			<h3 className='meal-type'>Snídaně</h3>
 			<Button onClick={showMenu} variant='outlined' sx={{ m: 'auto', display: breakfastButton, flexDirection: "column" }}>
 				<img src={Plus} alt='plus sign' width="150vmin" />
