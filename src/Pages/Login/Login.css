@@ -1,0 +1,44 @@
+.form--container {
+    padding: 100px 0;
+    width: clamp(300px, 80%, 320px);
+    margin: 0 auto;
+
+    .login--switch {
+        display: flex;
+
+        p {
+            font-size: 0.85rem;
+            padding-right: 8px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+    }
+
+    .loginForm {
+        display: grid;
+        background-color: #6B4D24;
+        padding: 30px 25px;
+        color: wheat;
+        border-radius: 20px;
+        text-align: left;
+
+        input {
+            min-height: 2rem;
+            margin: 10px 0 25px 0;
+            border: none;
+            border-radius: 5px;
+        }
+
+        .loginForm__submit-btn {
+            border: none;
+            border-radius: 15px;
+            background-color: wheat;
+            padding: 10px;
+            font-weight: 700;
+            font-size: 1rem;
+            color: #6B4D24;
+            margin-bottom: 0;
+        }
+
+    }
+}

@@ -2,24 +2,44 @@
   text-align: center;
 }
 
-.App-logo {
-  height: calc(12px + 8vmin);
-  margin: 0 5vmin;
-  pointer-events: none;
-}
-
 .App-header {
   background-color: #282c34;
   position: sticky;
   top: 0;
   max-height: 10vh;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: start;
-  font-size: calc(10px + 2vmin);
-  color: white;
-  z-index: 5;
+
+  .App-logo {
+    max-height: calc(10px + 7vmin);
+    margin: 1.5vmin 3vmin 1.5vmin 5vmin;
+    pointer-events: none;
+  }
+
+  a {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: start;
+    font-size: calc(10px + 3vmin);
+    color: wheat;
+    font-weight: 500;
+    z-index: 5;
+    text-decoration: none;
+
+    button {
+      position: absolute;
+      right: 35px;
+      top: 25px;
+      padding: 0.7rem 1.75rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      border-radius: 10px;
+      background-color: rgba(245, 222, 179, 0.6);
+      border: none;
+      color: #282c34;
+      box-shadow: 2px 2px 8px 0px #000000;
+      cursor: pointer;
+    }
+  }
 }
 
 .App-body {
