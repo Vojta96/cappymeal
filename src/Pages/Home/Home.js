@@ -1,18 +1,18 @@
 import React from 'react'
+import './Home.css'
+import { Link } from 'react-router-dom'
 
 const Home = () => {
     return (
-        <div className=''>
-            <div className=''>
-                <h2>Recepty</h2>
-            </div>
-            <div className=''>
+        <div className='home-page'>
+            <Link className='section recipes' to='/' />
+            <Link className='section week' to='/week'>
                 <h2>Týden</h2>
-            </div>
-            <div className=''>
+            </Link>
+            <Link className='section shopping-list' to='/'>
                 <h2>Nákupní seznam</h2>
-            </div>
-        </div>
+            </Link>
+        </div >
     )
 }
 

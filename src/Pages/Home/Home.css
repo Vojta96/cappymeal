@@ -1,0 +1,52 @@
+.home-page {
+    display: flex;
+    height: 90vh;
+
+    .section {
+        flex: 1;
+        height: 100%;
+        color: rgb(70, 55, 27);
+        background-repeat: no-repeat;
+        background-size: cover;
+        background-position: center;
+        position: relative;
+        cursor: pointer;
+    }
+
+    .section::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        background-color: rgba(0, 0, 0, 0.39);
+        transition: 1s;
+
+    }
+
+    .section:hover::after {
+        opacity: 1;
+    }
+
+    .recipes {
+        background-image: url('/src/Images/recepts');
+    }
+
+    .week {
+        background-image: url('/src/Images/calendar.png');
+    }
+
+    .shopping-list {
+        background-image: url('/src/Images/shoppingList.jpeg');
+    }
+
+    h2 {
+        position: absolute;
+        top: 60%;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 3.3rem;
+        font-style: italic;
+    }
+}
