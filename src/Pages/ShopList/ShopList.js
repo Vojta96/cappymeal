@@ -1,10 +1,134 @@
-import React from 'react'
+import React, { useState } from 'react';
+import { Checkbox, FormControlLabel, Divider, Chip, Paper, Button } from '@mui/material';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
+import { useWeek } from '../../context/WeekContext';
+import { Link } from 'react-router-dom';
+import './ShopList.css';
+
+const CZECH_DAYS_SHORT = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
+const formatDayKey = (key) => {
+  const d = new Date(key + 'T12:00:00');
+  return `${CZECH_DAYS_SHORT[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.`;
+};
+
+const SLOT_LABELS = {
+  breakfast:        'Snídaně',
+  snack:            'Svačina',
+  lunch:            'Oběd',
+  afternoon_snack:  'Odp. svačina',
+  dinner:           'Večeře',
+};
 
 const ShopList = () => {
-	
-  return (
-	<div>ShopList</div>
-  )
-}
+  const { weekPlan } = useWeek();
+  const [checked, setChecked] = useState({});
 
-export default ShopList
+  const ingredientMap = {};
+  Object.entries(weekPlan).forEach(([day, slots]) => {
+    Object.entries(slots).forEach(([slot, meal]) => {
+      if (!meal) return;
+      meal.ingredients.forEach(ing => {
+        const key = ing.name.toLowerCase().trim();
+        if (!ingredientMap[key]) {
+          ingredientMap[key] = { name: ing.name, entries: [] };
+        }
+        ingredientMap[key].entries.push({
+          amount: ing.amount,
+          day: formatDayKey(day),
+          slot: SLOT_LABELS[slot],
+          mealName: meal.name,
+        });
+      });
+    });
+  });
+
+  const ingredients = Object.entries(ingredientMap)
+    .map(([key, val]) => ({ key, ...val }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'cs'));
+
+  const plannedCount = Object.values(weekPlan)
+    .flatMap(Object.values)
+    .filter(Boolean).length;
+
+  const checkedCount = ingredients.filter(i => checked[i.key]).length;
+
+  const toggle = key => setChecked(prev => ({ ...prev, [key]: !prev[key] }));
+  const clearChecked = () => setChecked({});
+
+  if (plannedCount === 0) {
+    return (
+      <div className="shoplist-empty">
+        <ShoppingCartIcon sx={{ fontSize: 90, color: '#c49a6c', mb: 2 }} />
+        <h2>Nákupní seznam je prázdný</h2>
+        <p>Nejprve si naplánujte jídla v sekci <Link to="/week" className="shoplist-link">Týden</Link>.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="shoplist-container">
+      <div className="shoplist-header">
+        <div>
+          <h1 className="shoplist-title">
+            <ShoppingCartIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
+            Nákupní seznam
+          </h1>
+          <p className="shoplist-subtitle">
+            {plannedCount} jídel · {ingredients.length} položek
+            {checkedCount > 0 && ` · ${checkedCount} zakoupeno`}
+          </p>
+        </div>
+        {checkedCount > 0 && (
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<DeleteSweepIcon />}
+            onClick={clearChecked}
+            sx={{ borderColor: '#c49a6c', color: '#6B4D24', alignSelf: 'flex-start' }}
+          >
+            Odškrtnout vše
+          </Button>
+        )}
+      </div>
+
+      <Paper className="shoplist-paper" elevation={2}>
+        {ingredients.map((item, idx) => (
+          <div key={item.key}>
+            {idx > 0 && <Divider />}
+            <div className={`shoplist-item${checked[item.key] ? ' checked' : ''}`}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={!!checked[item.key]}
+                    onChange={() => toggle(item.key)}
+                    sx={{ color: '#c49a6c', '&.Mui-checked': { color: '#6B4D24' } }}
+                  />
+                }
+                label={
+                  <span className="shoplist-item-label">
+                    <span className="shoplist-item-name">{item.name}</span>
+                    <span className="shoplist-chips">
+                      {item.entries.map((e, i) => (
+                        <Chip
+                          key={i}
+                          label={`${e.amount} — ${e.day}`}
+                          size="small"
+                          title={`${e.mealName} (${e.slot})`}
+                          className="shoplist-chip"
+                        />
+                      ))}
+                    </span>
+                  </span>
+                }
+                sx={{ width: '100%', m: 0, py: 0.75, alignItems: 'flex-start' }}
+              />
+            </div>
+          </div>
+        ))}
+      </Paper>
+    </div>
+  );
+};
+
+export default ShopList;

@@ -1,58 +1,156 @@
-import React, { useState } from 'react'
-import './Login.css'
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import './Login.css';
+
+const ERROR_MESSAGES = {
+  'auth/email-already-in-use': 'Tato přezdívka je již zabraná.',
+  'auth/invalid-credential': 'Přezdívka nebo heslo není správné.',
+  'auth/user-not-found': 'Přezdívka nebo heslo není správné.',
+  'auth/wrong-password': 'Přezdívka nebo heslo není správné.',
+  'auth/weak-password': 'Heslo musí mít alespoň 6 znaků.',
+  'auth/invalid-email': 'Přezdívka obsahuje nepovolené znaky.',
+  'auth/too-many-requests': 'Příliš mnoho pokusů. Zkus to za chvíli.',
+};
 
 const Login = () => {
-  const [formSwitch, setFormSwitch] = useState('login');
+  const [tab, setTab] = useState('login');
+  const [nickname, setNickname] = useState('');
+  const [password, setPassword] = useState('');
+  const [password2, setPassword2] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const pozor = () => {
-    alert('pozor, pozor')
-  }
+  const { login, register } = useAuth();
+  const navigate = useNavigate();
 
-  const Form = () => {
-    switch (formSwitch) {
-      case ('login'):
-        return (
-          <form onSubmit={e => pozor()} className='loginForm'>
-            <label for="nickname">Přezdívka:</label>
-            <input name='nickname' type='text' />
-            <label for="password">Zadejte heslo:</label>
-            <input name='password' type='text' />
-            <input type='submit' className='loginForm__submit-btn' />
-          </form>
-        )
-        break;
-      case ('register'):
-        return (
-          <form onSubmit={""} className='loginForm'>
-            <label for="nickname">Přezdívka:</label>
-            <input name='nickname' type='text' />
-            <label for="password1">Zadejte heslo:</label>
-            <input name='password1' type='text' />
-
-            <label for="password2">Zadejte heslo pro kontolu:</label>
-            <input name='password2' type='text' />
-            <input type='submit' className='loginForm__submit-btn' />
-          </form>
-        )
-        break;
-      default:
-        alert('something went wrong')
-        break;
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      await login(nickname, password);
+      navigate('/');
+    } catch (err) {
+      setError(ERROR_MESSAGES[err.code] ?? 'Něco se pokazilo. Zkus to znovu.');
+    } finally {
+      setLoading(false);
     }
-  }
+  };
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (password !== password2) {
+      setError('Hesla se neshodují.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await register(nickname, password);
+      navigate('/');
+    } catch (err) {
+      setError(ERROR_MESSAGES[err.code] ?? 'Něco se pokazilo. Zkus to znovu.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const switchTab = (t) => {
+    setTab(t);
+    setError('');
+    setPassword('');
+    setPassword2('');
+  };
 
   return (
     <div className='form--container'>
       <div>
         <div className='login--switch'>
-          <p onClick={e => setFormSwitch('login')}>Login</p>
+          <p
+            onClick={() => switchTab('login')}
+            className={tab === 'login' ? 'login--switch__active' : ''}
+          >
+            Login
+          </p>
           <p>  /  </p>
-          <p onClick={e => setFormSwitch('register')}>Register</p>
+          <p
+            onClick={() => switchTab('register')}
+            className={tab === 'register' ? 'login--switch__active' : ''}
+          >
+            Register
+          </p>
         </div>
-        <Form />
+
+        {tab === 'login' ? (
+          <form onSubmit={handleLogin} className='loginForm'>
+            <label htmlFor='nickname'>Přezdívka:</label>
+            <input
+              id='nickname'
+              type='text'
+              value={nickname}
+              onChange={e => setNickname(e.target.value)}
+              required
+              autoComplete='username'
+            />
+            <label htmlFor='password'>Heslo:</label>
+            <input
+              id='password'
+              type='password'
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+              autoComplete='current-password'
+            />
+            {error && <p className='loginForm__error'>{error}</p>}
+            <input
+              type='submit'
+              className='loginForm__submit-btn'
+              value={loading ? 'Přihlašuji…' : 'Přihlásit se'}
+              disabled={loading}
+            />
+          </form>
+        ) : (
+          <form onSubmit={handleRegister} className='loginForm'>
+            <label htmlFor='nickname2'>Přezdívka:</label>
+            <input
+              id='nickname2'
+              type='text'
+              value={nickname}
+              onChange={e => setNickname(e.target.value)}
+              required
+              autoComplete='username'
+            />
+            <label htmlFor='password1'>Heslo:</label>
+            <input
+              id='password1'
+              type='password'
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+              autoComplete='new-password'
+            />
+            <label htmlFor='password2'>Heslo pro kontrolu:</label>
+            <input
+              id='password2'
+              type='password'
+              value={password2}
+              onChange={e => setPassword2(e.target.value)}
+              required
+              autoComplete='new-password'
+            />
+            {error && <p className='loginForm__error'>{error}</p>}
+            <input
+              type='submit'
+              className='loginForm__submit-btn'
+              value={loading ? 'Registruji…' : 'Registrovat se'}
+              disabled={loading}
+            />
+          </form>
+        )}
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default Login
+export default Login;

@@ -38,7 +38,23 @@
             font-size: 1rem;
             color: #6B4D24;
             margin-bottom: 0;
+            cursor: pointer;
+
+            &:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+            }
         }
 
+        .loginForm__error {
+            color: #ffccaa;
+            font-size: 0.85rem;
+            margin: -10px 0 10px 0;
+        }
+
+    }
+
+    .login--switch__active {
+        text-decoration: underline;
     }
 }

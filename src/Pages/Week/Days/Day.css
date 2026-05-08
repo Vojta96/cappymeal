@@ -1,0 +1,112 @@
+.day-container {
+  padding: 24px;
+  text-align: left;
+  background-color: #f0e8d8;
+  min-height: 80vh;
+}
+
+.day-slot {
+  margin-bottom: 28px;
+}
+
+.day-slot-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #4a3419;
+  font-size: 1.05rem;
+  margin: 0 0 10px 0;
+  font-weight: 600;
+}
+
+.day-slot-emoji {
+  font-size: 1.2rem;
+}
+
+.day-meal-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background-color: #fdf5ec;
+  border: 1px solid #c49a6c;
+  border-radius: 14px;
+  padding: 12px 14px;
+  position: relative;
+  max-width: 560px;
+}
+
+.day-meal-card.selectable {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.day-meal-card.selectable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(107, 77, 36, 0.25);
+}
+
+.day-meal-image {
+  width: 76px;
+  height: 76px;
+  object-fit: cover;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.day-meal-emoji {
+  width: 76px;
+  height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.4rem;
+  background: linear-gradient(135deg, #eddfc8 0%, #e0c9a8 100%);
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.day-meal-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.day-meal-info h4 {
+  margin: 0 0 2px 0;
+  color: #3a2810;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.day-meal-prep {
+  margin: 0 0 6px 0;
+  color: #999;
+  font-size: 0.75rem;
+}
+
+.day-meal-info ul {
+  margin: 0;
+  padding-left: 16px;
+  color: #6B4D24;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.day-meal-more {
+  color: #aaa;
+  font-style: italic;
+}
+
+.day-meal-delete {
+  color: #c0392b !important;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.day-meal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+  padding: 4px 0 8px;
+}

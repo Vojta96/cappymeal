@@ -1,0 +1,95 @@
+.shoplist-container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 28px 20px;
+}
+
+.shoplist-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.shoplist-title {
+  color: #3a2810;
+  margin: 0 0 4px 0;
+  font-size: 1.6rem;
+}
+
+.shoplist-subtitle {
+  color: #7a5c30;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.shoplist-paper {
+  border-radius: 16px !important;
+  overflow: hidden;
+  background-color: #fdf5ec !important;
+}
+
+.shoplist-item {
+  padding: 4px 12px;
+  transition: background-color 0.2s;
+}
+
+.shoplist-item.checked {
+  background-color: #f0ece4;
+}
+
+.shoplist-item.checked .shoplist-item-name {
+  text-decoration: line-through;
+  color: #aaa;
+}
+
+.shoplist-item-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shoplist-item-name {
+  font-weight: 600;
+  color: #3a2810;
+  font-size: 0.95rem;
+}
+
+.shoplist-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.shoplist-chip {
+  background-color: #e8d5bc !important;
+  color: #4a3419 !important;
+  font-size: 0.72rem !important;
+  height: 22px !important;
+}
+
+.shoplist-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  color: #6B4D24;
+  text-align: center;
+  padding: 24px;
+}
+
+.shoplist-empty h2 {
+  margin-bottom: 8px;
+  color: #3a2810;
+}
+
+.shoplist-empty p {
+  color: #7a5c30;
+  font-size: 1rem;
+}
+
+.shoplist-link {
+  color: #6B4D24;
+  font-weight: 600;
+}

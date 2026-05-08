@@ -7,6 +7,7 @@
   position: sticky;
   top: 0;
   max-height: 10vh;
+  z-index: 1100;
 
   .App-logo {
     max-height: calc(10px + 7vmin);
@@ -22,27 +23,32 @@
     font-size: calc(10px + 3vmin);
     color: wheat;
     font-weight: 500;
-    z-index: 5;
     text-decoration: none;
+  }
 
-    button {
-      position: absolute;
-      right: 35px;
-      top: 25px;
-      padding: 0.7rem 1.75rem;
-      font-size: 0.9rem;
-      font-weight: 600;
-      border-radius: 10px;
-      background-color: rgba(245, 222, 179, 0.6);
-      border: none;
-      color: #282c34;
-      box-shadow: 2px 2px 8px 0px #000000;
-      cursor: pointer;
+  button {
+    position: absolute;
+    right: 35px;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 0.5rem 1.4rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border-radius: 20px;
+    background-color: rgba(245, 222, 179, 0.15);
+    border: 1.5px solid rgba(245, 222, 179, 0.5);
+    color: wheat;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+
+    &:hover {
+      background-color: rgba(245, 222, 179, 0.3);
+      border-color: wheat;
     }
   }
 }
 
 .App-body {
-  background-color: #bebebe;
+  background-color: #f0e8d8;
   min-height: 90vh;
 }
