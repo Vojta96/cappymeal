@@ -64,8 +64,20 @@ export function WeekProvider({ children }) {
   const setMeal = (day, slot, meal) => dispatch({ type: 'SET_MEAL', day, slot, meal });
   const removeMeal = (day, slot) => dispatch({ type: 'REMOVE_MEAL', day, slot });
 
+  const pruneOldDays = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayKey = today.toISOString().slice(0, 10);
+    const pruned = Object.fromEntries(
+      Object.entries(weekPlan).filter(([key]) => key >= todayKey)
+    );
+    if (Object.keys(pruned).length !== Object.keys(weekPlan).length) {
+      dispatch({ type: 'LOAD', data: pruned });
+    }
+  };
+
   return (
-    <WeekContext.Provider value={{ weekPlan, getDay, setMeal, removeMeal }}>
+    <WeekContext.Provider value={{ weekPlan, getDay, setMeal, removeMeal, pruneOldDays }}>
       {children}
     </WeekContext.Provider>
   );

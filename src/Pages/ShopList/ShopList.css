@@ -49,10 +49,31 @@
   gap: 4px;
 }
 
+.shoplist-item-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .shoplist-item-name {
   font-weight: 600;
   color: #3a2810;
   font-size: 0.95rem;
+}
+
+.shoplist-item-total {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #fff;
+  background-color: #6B4D24;
+  padding: 1px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.shoplist-item.checked .shoplist-item-total {
+  background-color: #bbb;
 }
 
 .shoplist-chips {

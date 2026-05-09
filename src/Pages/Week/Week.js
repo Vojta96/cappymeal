@@ -5,11 +5,13 @@ import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
 import Box from '@mui/material/Box';
 import Day from './Days/Day';
+import { useWeek } from '../../context/WeekContext';
 
 const CZECH_DAYS = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
 
 function generateDays(count = 14) {
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
   return Array.from({ length: count }, (_, i) => {
     const d = new Date(today);
     d.setDate(today.getDate() + i);
@@ -19,10 +21,14 @@ function generateDays(count = 14) {
   });
 }
 
-const DAYS = generateDays(14);
-
 const Week = () => {
   const [value, setValue] = React.useState(0);
+  const { pruneOldDays } = useWeek();
+  const DAYS = React.useMemo(() => generateDays(14), []);
+
+  React.useEffect(() => {
+    pruneOldDays?.();
+  }, []);
 
   return (
     <Box>

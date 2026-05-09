@@ -14,7 +14,8 @@ const TYPE_FILTERS = [
 
 const Meals = () => {
   const [filter, setFilter] = useState(null);
-  const filtered = filter ? MealsList.filter(m => m.type === filter) : MealsList;
+
+  const filtered = MealsList.filter(m => !filter || m.type === filter);
 
   return (
     <div className="meals-page">
@@ -35,19 +36,20 @@ const Meals = () => {
       </Box>
 
       <div className="meals-grid">
+        {filtered.length === 0 && (
+          <p className="meals-no-results">Žádné recepty neodpovídají filtru.</p>
+        )}
         {filtered.map(meal => (
           <div className="recipe-card" key={meal.id}>
-            {meal.image ? (
-              <img src={meal.image} alt={meal.name} className="recipe-card-image" />
-            ) : (
-              <div className="recipe-card-emoji">{meal.emoji}</div>
-            )}
+            <div className="recipe-card-emoji">{meal.emoji}</div>
             <div className="recipe-card-body">
               <h3 className="recipe-card-name">{meal.name}</h3>
               <p className="recipe-card-prep">{meal.preparation}</p>
               <ul className="recipe-card-ingredients">
                 {meal.ingredients.map((ing, i) => (
-                  <li key={i}><strong>{ing.amount}</strong> {ing.name}</li>
+                  <li key={i}>
+                    <strong>{ing.amount}</strong> {ing.name}
+                  </li>
                 ))}
               </ul>
               {meal.instructions && (

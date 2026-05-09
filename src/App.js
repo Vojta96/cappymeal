@@ -6,13 +6,16 @@ import Meals from './Pages/Meals/Meals';
 import ShopList from './Pages/ShopList/ShopList';
 import Login from './Pages/Login/Login';
 import NoPage from './Pages/NoPage';
+import PreferencesModal from './components/PreferencesModal';
 import { Box, CircularProgress } from '@mui/material';
 import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
 import { WeekProvider } from './context/WeekContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { PreferencesProvider, usePreferences } from './context/PreferencesContext';
 
 function AppContent() {
   const { user, loading, logout } = useAuth();
+  const { preferences, prefsLoaded } = usePreferences();
 
   if (loading) {
     return (
@@ -37,6 +40,7 @@ function AppContent() {
           </Link>
         )}
       </header>
+      <PreferencesModal open={!!user && prefsLoaded && preferences === null} />
       <Box className="App-body">
         <Routes>
           {!user ? (
@@ -65,7 +69,9 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <WeekProvider>
-          <AppContent />
+          <PreferencesProvider>
+            <AppContent />
+          </PreferencesProvider>
         </WeekProvider>
       </BrowserRouter>
     </AuthProvider>

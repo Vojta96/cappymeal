@@ -20,6 +20,48 @@ const SLOT_LABELS = {
   dinner:           'Večeře',
 };
 
+const FRACTIONS = { '½': 0.5, '¼': 0.25, '¾': 0.75, '⅓': 1 / 3, '⅔': 2 / 3 };
+const SKIP_PATTERN = /dle chuti|dle chutě|pár kapek/i;
+
+function formatNum(n) {
+  if (n === Math.floor(n)) return String(n);
+  const whole = Math.floor(n);
+  const frac = Math.round((n - whole) * 8) / 8;
+  const fracStr = frac === 0.5 ? '½' : frac === 0.25 ? '¼' : frac === 0.75 ? '¾' : n.toFixed(1).replace('.', ',');
+  return whole > 0 ? `${whole}${fracStr}` : fracStr;
+}
+
+function getTotalAmount(entries) {
+  const unitTotals = {};
+
+  for (const { amount } of entries) {
+    const raw = amount.trim();
+    if (SKIP_PATTERN.test(raw)) continue;
+
+    let num = 0;
+    let rest = raw;
+
+    for (const [frac, val] of Object.entries(FRACTIONS)) {
+      if (rest.includes(frac)) {
+        num += val;
+        rest = rest.replace(frac, '').trim();
+      }
+    }
+
+    const numMatch = rest.match(/^([\d.,]+)\s*/);
+    if (numMatch) {
+      num += parseFloat(numMatch[1].replace(',', '.'));
+      rest = rest.slice(numMatch[0].length).trim();
+    }
+
+    const unit = rest.toLowerCase() || 'ks';
+    unitTotals[unit] = (unitTotals[unit] || 0) + (num || 1);
+  }
+
+  const parts = Object.entries(unitTotals).map(([unit, total]) => `${formatNum(total)} ${unit}`);
+  return parts.length > 0 ? parts.join(' + ') : null;
+}
+
 const ShopList = () => {
   const { weekPlan } = useWeek();
   const [checked, setChecked] = useState({});
@@ -93,39 +135,47 @@ const ShopList = () => {
       </div>
 
       <Paper className="shoplist-paper" elevation={2}>
-        {ingredients.map((item, idx) => (
-          <div key={item.key}>
-            {idx > 0 && <Divider />}
-            <div className={`shoplist-item${checked[item.key] ? ' checked' : ''}`}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={!!checked[item.key]}
-                    onChange={() => toggle(item.key)}
-                    sx={{ color: '#c49a6c', '&.Mui-checked': { color: '#6B4D24' } }}
-                  />
-                }
-                label={
-                  <span className="shoplist-item-label">
-                    <span className="shoplist-item-name">{item.name}</span>
-                    <span className="shoplist-chips">
-                      {item.entries.map((e, i) => (
-                        <Chip
-                          key={i}
-                          label={`${e.amount} — ${e.day}`}
-                          size="small"
-                          title={`${e.mealName} (${e.slot})`}
-                          className="shoplist-chip"
-                        />
-                      ))}
+        {ingredients.map((item, idx) => {
+          const total = getTotalAmount(item.entries);
+          return (
+            <div key={item.key}>
+              {idx > 0 && <Divider />}
+              <div className={`shoplist-item${checked[item.key] ? ' checked' : ''}`}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={!!checked[item.key]}
+                      onChange={() => toggle(item.key)}
+                      sx={{ color: '#c49a6c', '&.Mui-checked': { color: '#6B4D24' } }}
+                    />
+                  }
+                  label={
+                    <span className="shoplist-item-label">
+                      <span className="shoplist-item-name-row">
+                        <span className="shoplist-item-name">{item.name}</span>
+                        {total && (
+                          <span className="shoplist-item-total">celkem {total}</span>
+                        )}
+                      </span>
+                      <span className="shoplist-chips">
+                        {item.entries.map((e, i) => (
+                          <Chip
+                            key={i}
+                            label={`${e.amount} — ${e.day}`}
+                            size="small"
+                            title={`${e.mealName} (${e.slot})`}
+                            className="shoplist-chip"
+                          />
+                        ))}
+                      </span>
                     </span>
-                  </span>
-                }
-                sx={{ width: '100%', m: 0, py: 0.75, alignItems: 'flex-start' }}
-              />
+                  }
+                  sx={{ width: '100%', m: 0, py: 0.75, alignItems: 'flex-start' }}
+                />
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </Paper>
     </div>
   );
