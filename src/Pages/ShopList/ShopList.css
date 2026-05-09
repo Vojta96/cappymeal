@@ -4,6 +4,20 @@
   padding: 28px 20px;
 }
 
+@media (max-width: 600px) {
+  .shoplist-container {
+    padding: 16px 14px;
+  }
+
+  .shoplist-title {
+    font-size: 1.3rem;
+  }
+
+  .shoplist-header {
+    margin-bottom: 14px;
+  }
+}
+
 .shoplist-header {
   display: flex;
   justify-content: space-between;

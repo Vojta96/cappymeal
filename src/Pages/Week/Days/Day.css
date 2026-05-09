@@ -110,3 +110,22 @@
   gap: 14px;
   padding: 4px 0 8px;
 }
+
+@media (max-width: 600px) {
+  .day-container {
+    padding: 16px 14px;
+  }
+
+  .day-meal-card {
+    max-width: 100%;
+  }
+
+  .day-meal-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .day-slot {
+    margin-bottom: 20px;
+  }
+}

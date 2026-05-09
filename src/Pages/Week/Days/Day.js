@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent,
-  IconButton, Button,
+  IconButton, Button, useMediaQuery,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -54,6 +54,7 @@ function Day({ dayKey }) {
   const { getDay, setMeal, removeMeal } = useWeek();
   const dayPlan = getDay(dayKey);
   const [activeSlot, setActiveSlot] = useState(null);
+  const isMobile = useMediaQuery('(max-width: 600px)');
 
   const activeSlotDef = SLOTS.find(s => s.key === activeSlot);
   const filteredMeals = activeSlot ? MealsList.filter(m => m.type === activeSlot) : [];
@@ -95,7 +96,8 @@ function Day({ dayKey }) {
         onClose={() => setActiveSlot(null)}
         maxWidth="md"
         fullWidth
-        PaperProps={{ sx: { borderRadius: '16px' } }}
+        fullScreen={isMobile}
+        PaperProps={{ sx: { borderRadius: isMobile ? 0 : '16px' } }}
       >
         <DialogTitle sx={{ backgroundColor: '#6B4D24', color: 'wheat', pr: 6 }}>
           {activeSlotDef?.emoji} Vybrat {activeSlotDef?.label.toLowerCase()}

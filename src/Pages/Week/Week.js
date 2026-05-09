@@ -32,7 +32,7 @@ const Week = () => {
 
   return (
     <Box>
-      <AppBar position="sticky" elevation={0} sx={{ top: '10vh' }}>
+      <AppBar position="sticky" elevation={0} sx={{ top: 'var(--header-h)' }}>
         <Tabs
           value={value}
           onChange={(_, v) => setValue(v)}

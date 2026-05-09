@@ -19,7 +19,7 @@ const Meals = () => {
 
   return (
     <div className="meals-page">
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', backgroundColor: '#6B4D24', position: 'sticky', top: 0, zIndex: 100 }}>
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', backgroundColor: '#6B4D24', position: 'sticky', top: 'var(--header-h)', zIndex: 100 }}>
         <Tabs
           value={filter}
           onChange={(_, v) => setFilter(v)}

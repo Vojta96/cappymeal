@@ -1,3 +1,13 @@
+:root {
+  --header-h: 10vh;
+}
+
+@media (max-width: 600px) {
+  :root {
+    --header-h: 56px;
+  }
+}
+
 .App {
   text-align: center;
 }
@@ -6,8 +16,10 @@
   background-color: #282c34;
   position: sticky;
   top: 0;
-  max-height: 10vh;
+  height: var(--header-h);
   z-index: 1100;
+  display: flex;
+  align-items: center;
 
   .App-logo {
     max-height: calc(10px + 7vmin);
@@ -50,5 +62,23 @@
 
 .App-body {
   background-color: #f0e8d8;
-  min-height: 90vh;
+  min-height: calc(100vh - var(--header-h));
+}
+
+@media (max-width: 480px) {
+  .App-header {
+    a {
+      font-size: calc(8px + 3vmin);
+    }
+
+    .App-logo {
+      margin: 1vmin 2vmin 1vmin 3vmin;
+    }
+
+    button {
+      right: 12px;
+      padding: 0.3rem 0.8rem;
+      font-size: 0.78rem;
+    }
+  }
 }

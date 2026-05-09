@@ -1,6 +1,7 @@
 .home-page {
     display: flex;
     height: 90vh;
+    height: 90dvh;
 
     .section {
         flex: 1;
@@ -16,13 +17,13 @@
     .section::after {
         content: '';
         position: absolute;
+        top: 0;
         left: 0;
         width: 100%;
         height: 100%;
         opacity: 0;
         background-color: rgba(0, 0, 0, 0.39);
         transition: 1s;
-
     }
 
     .section:hover::after {
@@ -48,5 +49,42 @@
         transform: translateX(-50%);
         font-size: 3.3rem;
         font-style: italic;
+        z-index: 1;
+        white-space: nowrap;
+    }
+}
+
+/* Mobile: stack sections vertically */
+@media (max-width: 768px) {
+    .home-page {
+        flex-direction: column;
+        height: calc(100vh - var(--header-h));
+        height: calc(100dvh - var(--header-h));
+        min-height: unset;
+    }
+
+    .home-page .section {
+        flex: 1;
+        height: auto;
+    }
+
+    /* On touch devices show permanent overlay so text is readable */
+    @media (hover: none) {
+        .home-page .section::after {
+            opacity: 0.38;
+            transition: none;
+        }
+
+        .home-page .section:hover::after {
+            opacity: 0.38;
+        }
+    }
+
+    .home-page h2 {
+        font-size: 2rem;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        color: #fff;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.65);
     }
 }
