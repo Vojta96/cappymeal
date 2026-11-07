@@ -1,9 +1,26 @@
 {
   "rules": {
     "users": {
-      "$userId": {
-        ".read": "auth != null && auth.uid === $userId",
-        ".write": "auth != null && auth.uid === $userId"
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "joinCodes": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null && !data.exists() && newData.exists()"
+      }
+    },
+    "households": {
+      "$hid": {
+        ".read": "auth != null && root.child('households/' + $hid + '/members/' + auth.uid).exists()",
+        ".write": "auth != null && (root.child('households/' + $hid + '/members/' + auth.uid).exists() || (!data.exists() && newData.child('members/' + auth.uid).exists()))",
+        "members": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        }
       }
     }
   }

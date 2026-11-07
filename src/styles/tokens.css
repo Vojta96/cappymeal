@@ -1,0 +1,160 @@
+:root {
+  --bg: #f8f3ea;
+  --bg-outside: #e9e0d1;
+  --card: #fffcf7;
+  --primary: #6b4d24;
+  --primary-ink: #fff6e6;
+  --ink: #2e2010;
+  --ink-2: #4a3720;
+  --muted: #7a6347;
+  --muted-2: #9a8466;
+  --muted-3: #a8916f;
+  --muted-4: #8a7458;
+  --faint: #b9a585;
+  --chevron: #c9b79b;
+  --tile: #f2e6d3;
+  --chip: #efe3cf;
+  --segment: #efe6d7;
+  --line: #ede3d3;
+  --line-2: #f0e7d8;
+  --input-border: #e6dac6;
+  --dash: #d9c7a9;
+  --alert-bg: #fbebd3;
+  --alert-icon-bg: #f6d6a8;
+  --alert-ink: #5c3708;
+  --alert-text: #8a5a1e;
+  --alert: #d98e2f;
+  --success-bg: #e3efe0;
+  --success: #3f7449;
+  --success-dot: #5a9a64;
+  --danger: #a23b2a;
+  --danger-bg: #f7e1dc;
+
+  --font: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --serif: 'Instrument Serif', Georgia, serif;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --tabbar-h: 64px;
+  --col: 480px;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--bg-outside);
+  font-family: var(--font);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior-y: none;
+}
+
+@media (max-width: 520px) {
+  body {
+    background: var(--bg);
+  }
+}
+
+input,
+textarea,
+button,
+select {
+  font-family: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+a {
+  color: var(--primary);
+}
+
+img {
+  display: block;
+}
+
+.ms {
+  font-family: 'Material Symbols Rounded';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.ms.fill {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+@keyframes pushIn {
+  from {
+    transform: translateY(-120%);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes sheetIn {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: 200px 0;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

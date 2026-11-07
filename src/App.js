@@ -1,81 +1,72 @@
-import logo from './Images/Cappy.png';
-import './App.css';
-import Week from './Pages/Week/Week';
-import Home from './Pages/Home/Home';
-import Meals from './Pages/Meals/Meals';
-import ShopList from './Pages/ShopList/ShopList';
-import Login from './Pages/Login/Login';
-import NoPage from './Pages/NoPage';
-import PreferencesModal from './components/PreferencesModal';
-import { Box, CircularProgress } from '@mui/material';
-import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
-import { WeekProvider } from './context/WeekContext';
+import React from 'react';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { PreferencesProvider, usePreferences } from './context/PreferencesContext';
+import { HouseholdProvider } from './context/HouseholdContext';
+import { BannerProvider } from './components/PushBanner';
+import AppLayout from './components/AppLayout';
+import { Splash } from './components/ui';
+import Login from './screens/Login';
+import Household from './screens/Household';
+import Home from './screens/Home';
+import Plan from './screens/Plan';
+import Recipes from './screens/Recipes';
+import RecipeDetail from './screens/RecipeDetail';
+import RecipeEdit from './screens/RecipeEdit';
+import Cart from './screens/Cart';
+import CartDone from './screens/CartDone';
+import Notifications from './screens/Notifications';
 
-function AppContent() {
-  const { user, loading, logout } = useAuth();
-  const { preferences, prefsLoaded } = usePreferences();
+function Gate() {
+  const { user, loading, profileLoading, householdId } = useAuth();
 
-  if (loading) {
+  if (loading || (user && profileLoading)) return <Splash />;
+
+  if (!user) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
-        <CircularProgress />
-      </Box>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    );
+  }
+
+  if (!householdId) {
+    return (
+      <Routes>
+        <Route path="/household" element={<Household />} />
+        <Route path="*" element={<Navigate to="/household" replace />} />
+      </Routes>
     );
   }
 
   return (
-    <div className="App">
-      <header className="App-header">
-        <Link to="/">
-          <img src={logo} className="App-logo" alt="logo" />
-          CappyMeal
-        </Link>
-        {user ? (
-          <button onClick={logout}>Odhlásit se</button>
-        ) : (
-          <Link to="/login">
-            <button>Přihlásit se</button>
-          </Link>
-        )}
-      </header>
-      <PreferencesModal open={!!user && prefsLoaded && preferences === null} />
-      <Box className="App-body">
+    <HouseholdProvider hid={householdId}>
+      <BannerProvider>
         <Routes>
-          {!user ? (
-            <>
-              <Route path="/login" element={<Login />} />
-              <Route path="*" element={<Navigate to="/login" replace />} />
-            </>
-          ) : (
-            <>
-              <Route path="/" element={<Home />} />
-              <Route path="/week" element={<Week />} />
-              <Route path="/recipes" element={<Meals />} />
-              <Route path="/shoplist" element={<ShopList />} />
-              <Route path="/login" element={<Navigate to="/" replace />} />
-              <Route path="*" element={<NoPage />} />
-            </>
-          )}
+          <Route element={<AppLayout />}>
+            <Route path="/" element={<Home />} />
+            <Route path="/plan" element={<Plan />} />
+            <Route path="/recipes" element={<Recipes />} />
+            <Route path="/recipes/new" element={<RecipeEdit />} />
+            <Route path="/recipes/:id" element={<RecipeDetail />} />
+            <Route path="/recipes/:id/edit" element={<RecipeEdit />} />
+            <Route path="/cart" element={<Cart />} />
+            <Route path="/cart/done" element={<CartDone />} />
+            <Route path="/notifications" element={<Notifications />} />
+          </Route>
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          <Route path="/household" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </Box>
-    </div>
+      </BannerProvider>
+    </HouseholdProvider>
   );
 }
 
-function App() {
+export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <WeekProvider>
-          <PreferencesProvider>
-            <AppContent />
-          </PreferencesProvider>
-        </WeekProvider>
-      </BrowserRouter>
+      <Gate />
     </AuthProvider>
   );
 }
-
-export default App;
