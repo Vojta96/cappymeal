@@ -59,7 +59,7 @@ body {
   overscroll-behavior-y: none;
 }
 
-@media (max-width: 520px) {
+@media (max-width: 520px), (min-width: 1024px) {
   body {
     background: var(--bg);
   }
@@ -156,5 +156,27 @@ img {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes toastIn {
+  from {
+    transform: translateX(30px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes modalIn {
+  from {
+    transform: translateY(16px) scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
   }
 }

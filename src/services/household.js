@@ -4,6 +4,7 @@ import { db } from '../firebase';
 import { generateJoinCode, JOIN_CODE_RE, normalizeJoinCode } from '../lib/joinCode';
 import { SEED_IMAGE_BY_ID } from '../lib/builtinImages';
 import seedRecipes from '../data/seedRecipes';
+import { capitalizeFirst } from '../lib/text';
 
 export const DEFAULT_SETTINGS = { remind3d: true, remindDaily: true, remindBoth: true, remindHour: 9 };
 
@@ -37,11 +38,14 @@ async function freeJoinCode() {
   throw new Error('Nepodařilo se vytvořit kód domácnosti. Zkuste to znovu.');
 }
 
-export async function createHousehold(uid, nickname) {
+export async function createHousehold(uid, nickname, name) {
+  const householdName = capitalizeFirst(name);
+  if (!householdName) throw new Error('Doplňte název domácnosti.');
   const now = Date.now();
   const hid = push(ref(db, 'households')).key;
   const code = await freeJoinCode();
   const household = {
+    name: householdName,
     joinCode: code,
     createdAt: now,
     members: { [uid]: { nickname, joinedAt: now } },

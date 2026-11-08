@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import logo from '../Images/Cappy.png';
 import { Spinner } from '../components/ui';
+import AuthLayout from '../components/AuthLayout';
 import './auth.css';
 
 const ERRORS = {
@@ -68,14 +69,15 @@ export default function Login() {
   };
 
   return (
-    <div className="auth">
-      <div className="auth__brand">
+    <AuthLayout>
+      <div className="auth__brand only-mobile">
         <div className="auth__logo">
           <img src={logo} alt="CappyMeal" />
         </div>
         <div className="auth__name">CappyMeal</div>
         <div className="auth__tagline">Společný jídelníček a nákup pro vaši domácnost</div>
       </div>
+      <h1 className="auth__title only-desktop">{isReg ? 'Registrace' : 'Přihlášení'}</h1>
       <form className="auth__form" onSubmit={submit} noValidate>
         <label className="field">
           Přezdívka
@@ -122,6 +124,6 @@ export default function Login() {
           </button>
         </div>
       </form>
-    </div>
+    </AuthLayout>
   );
 }

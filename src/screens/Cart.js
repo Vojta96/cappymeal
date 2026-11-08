@@ -13,6 +13,7 @@ import {
   shoppingListText,
 } from '../lib/meals';
 import { fillCart, getRohlikStatus, matchProducts } from '../services/rohlik';
+import { useIsDesktop } from '../hooks/useMediaQuery';
 import './cart.css';
 
 async function copyText(text) {
@@ -49,6 +50,7 @@ export default function Cart() {
     useHousehold();
   const location = useLocation();
   const navigate = useNavigate();
+  const isDesktop = useIsDesktop();
 
   const [daysSel, setDaysSel] = useState(() => (location.state && location.state.days) || null);
   const [step, setStep] = useState('list'); // list | matching | matched | filling
@@ -80,7 +82,7 @@ export default function Cart() {
 
   const days = useMemo(
     () => (daysSel || pendingDays).filter((k) => horizon.includes(k)).sort(),
-    [daysSel, pendingDays, horizon]
+    [daysSel, pendingDays, horizon],
   );
   const chipDays = useMemo(() => {
     const set = new Set(days);
@@ -147,7 +149,7 @@ export default function Cart() {
     try {
       const res = await fillCart(
         days,
-        chosen.map((x) => ({ productId: x.product.productId, quantity: x.qty }))
+        chosen.map((x) => ({ productId: x.product.productId, quantity: x.qty })),
       );
       if (!res || (!res.ok && !res.added)) {
         throw new Error('Do košíku se nepodařilo nic vložit.');
@@ -187,7 +189,9 @@ export default function Cart() {
       <h1 className="h-title" style={{ lineHeight: 1 }}>
         Nákup
       </h1>
-      <div style={{ fontSize: 14, color: 'var(--muted-2)' }}>Suroviny z plánu se pošlou do košíku na Rohlíku</div>
+      <div style={{ fontSize: 14, color: 'var(--muted-2)' }}>
+        Suroviny z plánu se pošlou do košíku na Rohlíku
+      </div>
     </div>
   );
 
@@ -207,14 +211,80 @@ export default function Cart() {
     );
   }
 
-  const busy = step === 'matching' || step === 'filling';
+  const busyStep = step === 'matching' || step === 'filling';
+  // Desktop right column (design2 "Doručení" card, adapted to the real Rohlík flow).
+  const panel = (
+    <aside className="cart__panel">
+      <div className="h-section">Košík na Rohlíku</div>
+      {step === 'list' &&
+        (notConfigured ? (
+          <div className="cart__panel-text">
+            Propojení s Rohlíkem není nastavené. Seznam si zkopírujte a objednejte v aplikaci Rohlík.
+          </div>
+        ) : (
+          <>
+            <div className="cart__panel-text">
+              Najdeme na Rohlíku produkty pro {buy.length}{' '}
+              {plural(buy.length, 'položku', 'položky', 'položek')}. Pak je zkontrolujete a pošlete do košíku.
+            </div>
+            <button
+              type="button"
+              className="btn btn--dark cart__panel-btn"
+              onClick={findOnRohlik}
+              disabled={buy.length === 0}
+            >
+              <Icon name="travel_explore" />
+              Najít na Rohlíku
+            </button>
+          </>
+        ))}
+      {step === 'matching' && (
+        <div className="row" style={{ gap: 12 }}>
+          <Spinner />
+          <div className="cart__panel-text">Hledám produkty na Rohlíku…</div>
+        </div>
+      )}
+      {(step === 'matched' || step === 'filling') && (
+        <>
+          <div className="cart__panel-text">
+            Vybráno {chosen.length} {plural(chosen.length, 'položka', 'položky', 'položek')}
+          </div>
+          <div className="cart__total">
+            <span>Celkem</span>
+            <strong>{formatKc(total)}</strong>
+          </div>
+          {total > 0 && total < MIN_ORDER_KC && (
+            <div className="cart__min">
+              <Icon name="info" size={18} />
+              Minimální objednávka na Rohlíku je {formatKc(MIN_ORDER_KC)} – chybí{' '}
+              {formatKc(MIN_ORDER_KC - total)}.
+            </div>
+          )}
+          <button
+            type="button"
+            className="btn btn--dark cart__panel-btn"
+            onClick={toCart}
+            disabled={busyStep || chosen.length === 0}
+          >
+            {step === 'filling' ? <Spinner small /> : <Icon name="local_shipping" />}
+            {step === 'filling' ? 'Vkládám do košíku…' : 'Vložit do košíku na Rohlíku'}
+          </button>
+          <div className="cart__panel-note">
+            Objednávku pak potvrdíte v aplikaci Rohlík, kde zvolíte i čas doručení.
+          </div>
+        </>
+      )}
+    </aside>
+  );
+
+  const busy = busyStep;
 
   return (
     <div className="screen screen--fill" style={{ gap: 18 }}>
       {header}
 
-      <div className="stack">
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)' }}>Objednat na dny</div>
+      <div className="stack cart__days">
+        <div className="cart__days-label">Objednat na dny</div>
         <div className="chips">
           {chipDays.map((k) => {
             const d = dayInfo(k, todayKey);
@@ -279,174 +349,190 @@ export default function Cart() {
             </div>
           )}
 
-          {step === 'list' && (
-            <>
-              <div className="stack">
-                <div className="row--between" style={{ alignItems: 'baseline' }}>
-                  <h2 className="h-section">Do košíku</h2>
-                  <div style={{ fontSize: 13, color: 'var(--muted-2)' }}>
-                    {buy.length} {plural(buy.length, 'položka', 'položky', 'položek')}
+          <div className="cart__cols">
+            <div className="cart__left">
+              {step === 'list' && (
+                <>
+                  <div className="stack">
+                    <div className="row--between" style={{ alignItems: 'baseline' }}>
+                      <h2 className="h-section">Do košíku</h2>
+                      <div style={{ fontSize: 13, color: 'var(--muted-2)' }}>
+                        {buy.length} {plural(buy.length, 'položka', 'položky', 'položek')}
+                      </div>
+                    </div>
+                    {buy.length > 0 ? (
+                      <div className="list-card" style={{ padding: '4px 14px' }}>
+                        {buy.map((it) => (
+                          <div key={it.key} className="list-row" style={{ gap: 12 }}>
+                            <div className="list-row__body">
+                              <div className="list-row__title">{it.name}</div>
+                              <div className="list-row__sub ellipsis">{itemDetail(it)}</div>
+                            </div>
+                            <button
+                              type="button"
+                              className="cart__home-btn"
+                              onClick={() => togglePantry(it.key, true)}
+                            >
+                              Mám doma
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="muted" style={{ fontSize: 14, padding: '6px 4px' }}>
+                        Všechno máte doma.
+                      </div>
+                    )}
                   </div>
-                </div>
-                {buy.length > 0 ? (
+                  {home.length > 0 && (
+                    <div className="stack">
+                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--muted)' }}>
+                        Máme doma · {home.length}
+                      </div>
+                      <div className="chips">
+                        {home.map((it) => (
+                          <button
+                            type="button"
+                            key={it.key}
+                            className="cart__pantry-chip"
+                            onClick={() => togglePantry(it.key, false)}
+                            title="Klepnutím vrátíte do košíku"
+                          >
+                            <Icon name="check" size={16} />
+                            <s>{it.name}</s>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {!isDesktop && !notConfigured && buy.length > 0 && (
+                    <div className="sticky-action">
+                      <button type="button" className="btn btn--dark" onClick={findOnRohlik}>
+                        <Icon name="travel_explore" />
+                        Najít na Rohlíku
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {step === 'matching' && (
+                <div className="stack">
+                  <h2 className="h-section">Hledám na Rohlíku…</h2>
                   <div className="list-card" style={{ padding: '4px 14px' }}>
-                    {buy.map((it) => (
+                    {buy.slice(0, 8).map((it) => (
                       <div key={it.key} className="list-row" style={{ gap: 12 }}>
-                        <div className="list-row__body">
-                          <div className="list-row__title">{it.name}</div>
-                          <div className="list-row__sub ellipsis">{itemDetail(it)}</div>
+                        <div className="skeleton" style={{ width: 52, height: 52, borderRadius: 14 }} />
+                        <div className="list-row__body" style={{ gap: 6 }}>
+                          <div style={{ fontSize: 12.5, color: 'var(--muted-2)' }}>{it.name}</div>
+                          <div className="skeleton" style={{ height: 14, width: '70%' }} />
+                          <div className="skeleton" style={{ height: 12, width: '35%' }} />
                         </div>
-                        <button
-                          type="button"
-                          className="cart__home-btn"
-                          onClick={() => togglePantry(it.key, true)}
-                        >
-                          Mám doma
-                        </button>
                       </div>
                     ))}
                   </div>
-                ) : (
-                  <div className="muted" style={{ fontSize: 14, padding: '6px 4px' }}>
-                    Všechno máte doma.
-                  </div>
-                )}
-              </div>
-              {home.length > 0 && (
-                <div className="stack">
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--muted)' }}>Máme doma · {home.length}</div>
-                  <div className="chips">
-                    {home.map((it) => (
-                      <button
-                        type="button"
-                        key={it.key}
-                        className="cart__pantry-chip"
-                        onClick={() => togglePantry(it.key, false)}
-                        title="Klepnutím vrátíte do košíku"
-                      >
-                        <Icon name="check" size={16} />
-                        <s>{it.name}</s>
+                </div>
+              )}
+
+              {(step === 'matched' || step === 'filling') && (
+                <>
+                  <div className="stack">
+                    <div className="row--between" style={{ alignItems: 'baseline' }}>
+                      <h2 className="h-section">Košík na Rohlíku</h2>
+                      <button type="button" className="link-btn" onClick={resetMatch} disabled={busy}>
+                        Upravit seznam
                       </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {!notConfigured && buy.length > 0 && (
-                <div className="sticky-action">
-                  <button type="button" className="btn btn--dark" onClick={findOnRohlik}>
-                    <Icon name="travel_explore" />
-                    Najít na Rohlíku
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-
-          {step === 'matching' && (
-            <div className="stack">
-              <h2 className="h-section">Hledám na Rohlíku…</h2>
-              <div className="list-card" style={{ padding: '4px 14px' }}>
-                {buy.slice(0, 8).map((it) => (
-                  <div key={it.key} className="list-row" style={{ gap: 12 }}>
-                    <div className="skeleton" style={{ width: 52, height: 52, borderRadius: 14 }} />
-                    <div className="list-row__body" style={{ gap: 6 }}>
-                      <div style={{ fontSize: 12.5, color: 'var(--muted-2)' }}>{it.name}</div>
-                      <div className="skeleton" style={{ height: 14, width: '70%' }} />
-                      <div className="skeleton" style={{ height: 12, width: '35%' }} />
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {(step === 'matched' || step === 'filling') && (
-            <>
-              <div className="stack">
-                <div className="row--between" style={{ alignItems: 'baseline' }}>
-                  <h2 className="h-section">Košík na Rohlíku</h2>
-                  <button type="button" className="link-btn" onClick={resetMatch} disabled={busy}>
-                    Upravit seznam
-                  </button>
-                </div>
-                <div className="list-card" style={{ padding: '4px 14px' }}>
-                  {buy.map((it) => {
-                    const pk = picks[it.key] || { idx: 0, qty: 1, skip: true };
-                    const c = results[it.key] || [];
-                    const prod = !pk.skip && c[pk.idx];
-                    return (
-                      <div key={it.key} className={`list-row cart__match${prod ? '' : ' cart__match--skip'}`}>
-                        <button
-                          type="button"
-                          className="cart__match-main"
-                          onClick={() => setPickSheet(it.key)}
-                          disabled={busy}
-                        >
-                          <ProductImg url={prod && prod.imageUrl} />
-                          <div className="list-row__body">
-                            <div className="cart__for">
-                              {it.name}
-                              {it.amounts.length > 0 && ` · ${it.amounts.join(' + ')}`}
-                            </div>
-                            <div className="list-row__title cart__pname">
-                              {prod ? prod.name : c.length ? 'Přeskočeno' : 'Nenalezeno'}
-                            </div>
+                    <div className="list-card" style={{ padding: '4px 14px' }}>
+                      {buy.map((it) => {
+                        const pk = picks[it.key] || { idx: 0, qty: 1, skip: true };
+                        const c = results[it.key] || [];
+                        const prod = !pk.skip && c[pk.idx];
+                        return (
+                          <div
+                            key={it.key}
+                            className={`list-row cart__match${prod ? '' : ' cart__match--skip'}`}
+                          >
+                            <button
+                              type="button"
+                              className="cart__match-main"
+                              onClick={() => setPickSheet(it.key)}
+                              disabled={busy}
+                            >
+                              <ProductImg url={prod && prod.imageUrl} />
+                              <div className="list-row__body">
+                                <div className="cart__for">
+                                  {it.name}
+                                  {it.amounts.length > 0 && ` · ${it.amounts.join(' + ')}`}
+                                </div>
+                                <div className="list-row__title cart__pname">
+                                  {prod ? prod.name : c.length ? 'Přeskočeno' : 'Nenalezeno'}
+                                </div>
+                                {prod && (
+                                  <div className="cart__price">
+                                    {prod.priceText || formatKc(prod.price)}
+                                    {prod.unit ? <span> · {prod.unit}</span> : null}
+                                  </div>
+                                )}
+                              </div>
+                            </button>
                             {prod && (
-                              <div className="cart__price">
-                                {prod.priceText || formatKc(prod.price)}
-                                {prod.unit ? <span> · {prod.unit}</span> : null}
+                              <div className="stepper">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    pk.qty <= 1
+                                      ? setPick(it.key, { skip: true })
+                                      : setPick(it.key, { qty: pk.qty - 1 })
+                                  }
+                                  aria-label="Méně"
+                                  disabled={busy}
+                                >
+                                  <Icon name={pk.qty <= 1 ? 'delete' : 'remove'} size={18} />
+                                </button>
+                                <span>{pk.qty}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setPick(it.key, { qty: pk.qty + 1 })}
+                                  aria-label="Více"
+                                  disabled={busy}
+                                >
+                                  <Icon name="add" size={18} />
+                                </button>
                               </div>
                             )}
                           </div>
-                        </button>
-                        {prod && (
-                          <div className="stepper">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                pk.qty <= 1 ? setPick(it.key, { skip: true }) : setPick(it.key, { qty: pk.qty - 1 })
-                              }
-                              aria-label="Méně"
-                              disabled={busy}
-                            >
-                              <Icon name={pk.qty <= 1 ? 'delete' : 'remove'} size={18} />
-                            </button>
-                            <span>{pk.qty}</span>
-                            <button
-                              type="button"
-                              onClick={() => setPick(it.key, { qty: pk.qty + 1 })}
-                              aria-label="Více"
-                              disabled={busy}
-                            >
-                              <Icon name="add" size={18} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-              {total > 0 && total < MIN_ORDER_KC && (
-                <div className="cart__min">
-                  <Icon name="info" size={18} />
-                  Minimální objednávka na Rohlíku je {formatKc(MIN_ORDER_KC)} – chybí {formatKc(MIN_ORDER_KC - total)}.
-                  Zbytek můžete doplnit v aplikaci Rohlík.
-                </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {!isDesktop && total > 0 && total < MIN_ORDER_KC && (
+                    <div className="cart__min">
+                      <Icon name="info" size={18} />
+                      Minimální objednávka na Rohlíku je {formatKc(MIN_ORDER_KC)} – chybí{' '}
+                      {formatKc(MIN_ORDER_KC - total)}. Zbytek můžete doplnit v aplikaci Rohlík.
+                    </div>
+                  )}
+                  {!isDesktop && (
+                    <div className="sticky-action">
+                      <button
+                        type="button"
+                        className="btn btn--dark cart__submit"
+                        onClick={toCart}
+                        disabled={busy || chosen.length === 0}
+                      >
+                        <span>
+                          {step === 'filling' ? 'Vkládám do košíku…' : 'Vložit do košíku na Rohlíku'}
+                        </span>
+                        {step === 'filling' ? <Spinner small /> : <strong>{formatKc(total)}</strong>}
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
-              <div className="sticky-action">
-                <button
-                  type="button"
-                  className="btn btn--dark cart__submit"
-                  onClick={toCart}
-                  disabled={busy || chosen.length === 0}
-                >
-                  <span>{step === 'filling' ? 'Vkládám do košíku…' : 'Vložit do košíku na Rohlíku'}</span>
-                  {step === 'filling' ? <Spinner small /> : <strong>{formatKc(total)}</strong>}
-                </button>
-              </div>
-            </>
-          )}
+            </div>
+            {isDesktop && panel}
+          </div>
         </>
       )}
 

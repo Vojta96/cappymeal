@@ -253,3 +253,282 @@
   flex-shrink: 0;
   padding: 0;
 }
+
+.recipes__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  column-gap: 10px;
+  row-gap: 16px;
+}
+
+.recipes__head .search {
+  order: 3;
+  flex-basis: 100%;
+}
+
+.recipes__count {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted-3);
+}
+
+.edit__grid,
+.edit__fields,
+.edit__row2 {
+  display: contents;
+}
+
+.edit__photo-hint {
+  font-size: 12.5px;
+  color: var(--muted-3);
+}
+
+/* ---------- desktop ---------- */
+@media (min-width: 1024px) {
+  .recipes__head {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    column-gap: 16px;
+  }
+
+  .recipes__title {
+    margin-right: auto;
+    gap: 12px !important;
+  }
+
+  .recipes__count {
+    font-size: 16px;
+  }
+
+  .recipes__head .search {
+    order: 0;
+    flex-basis: auto;
+    width: 320px;
+    max-width: 100%;
+    height: 46px;
+    border-radius: 15px;
+  }
+
+  .recipes__head .search input {
+    font-size: 15px;
+  }
+
+  .recipes__new {
+    width: auto;
+    height: 46px;
+    padding: 0 18px;
+    border-radius: 15px;
+    gap: 6px;
+    font-size: 14.5px;
+    font-weight: 700;
+  }
+
+  .recipes__new .ms {
+    font-size: 21px !important;
+  }
+
+  .recipes__new:hover {
+    background: #5a3f1c;
+  }
+
+  .recipes__grid {
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 24px 18px;
+  }
+
+  .recipes__card {
+    gap: 10px;
+  }
+
+  .recipes__img {
+    border-radius: 24px !important;
+    transition: transform 0.2s;
+  }
+
+  .recipes__card:hover .recipes__img {
+    transform: translateY(-3px);
+  }
+
+  .recipes__img .ms,
+  .recipes__img > span {
+    font-size: 64px !important;
+  }
+
+  .recipes__name {
+    font-size: 15.5px;
+  }
+
+  /* detail */
+  .detail-d {
+    padding-top: 32px;
+    gap: 22px;
+  }
+
+  .detail-d__back {
+    align-self: flex-start;
+    height: 40px;
+    padding: 0 14px 0 8px;
+    border-radius: 20px;
+    border: none;
+    background: var(--card);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--ink);
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .detail-d__back:hover {
+    background: #f2eadd;
+  }
+
+  .detail-d__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 48px;
+    align-items: start;
+  }
+
+  .detail-d__img {
+    position: sticky;
+    top: 24px;
+    aspect-ratio: 4 / 5;
+    border-radius: 30px;
+    overflow: hidden;
+    background: var(--tile);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .detail-d__img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .detail-d .detail__name {
+    font-size: 50px;
+    line-height: 1.04;
+    text-wrap: pretty;
+  }
+
+  .detail-d .tag {
+    font-size: 12.5px;
+    padding: 6px 11px;
+  }
+
+  .detail-d .h-section {
+    font-size: 19px;
+  }
+
+  .detail-d .detail__ing {
+    padding: 13px 0;
+    font-size: 16px;
+  }
+
+  .detail-d .detail__instr {
+    font-size: 16px;
+    line-height: 1.65;
+    max-width: 560px;
+  }
+
+  /* edit */
+  .edit__title {
+    font-size: 44px;
+    line-height: 1;
+    margin: 0 auto 0 0;
+    font-weight: 400;
+  }
+
+  .edit__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: 40px;
+    align-items: start;
+  }
+
+  .edit__fields {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .edit__row2 {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+
+  .edit__row2 .chips {
+    gap: 6px;
+  }
+
+  .edit__row2 .chip {
+    height: 36px;
+    padding: 0 13px;
+    font-size: 13.5px;
+  }
+
+  .edit__row2 .input {
+    height: 48px;
+    border-radius: 14px;
+    font-size: 15px;
+  }
+
+  .edit__photo {
+    position: sticky;
+    top: 24px;
+    height: auto;
+    aspect-ratio: 4 / 5;
+    border-radius: 28px;
+  }
+
+  .edit__photo-change {
+    bottom: 16px;
+    right: 16px;
+    height: 40px;
+    padding: 0 16px;
+    border-radius: 20px;
+    font-size: 14px;
+  }
+
+  .edit__photo-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 32px;
+  }
+
+  .edit__photo-hint {
+    font-size: 13.5px;
+  }
+
+  .edit__fields .field .input {
+    border-radius: 14px;
+  }
+
+  .edit__ing .input--amount {
+    width: 130px;
+  }
+
+  .edit__ing .input {
+    height: 46px;
+    border-radius: 13px;
+  }
+
+  .edit__add-ing {
+    align-self: flex-start;
+    height: 42px;
+    padding: 0 16px;
+    border-radius: 13px;
+  }
+
+  .edit__delete {
+    align-self: flex-start;
+    width: auto;
+  }
+}

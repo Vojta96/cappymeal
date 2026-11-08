@@ -8,12 +8,14 @@ import logo from '../Images/Cappy.png';
 import { cap, dayInfo } from '../lib/dates';
 import { STATUS, mealCount, mealCountLabel, plannedSlots } from '../lib/meals';
 import { readStorage, writeStorage } from '../lib/storage';
+import { useIsDesktop } from '../hooks/useMediaQuery';
 import './home.css';
 
 export default function Home() {
   const { todayKey, horizon, plan, recipes, alert, statusOf } = useHousehold();
   const { showBanner } = useBanner();
   const navigate = useNavigate();
+  const isDesktop = useIsDesktop();
   const today = dayInfo(todayKey, todayKey);
   const todaySlots = plannedSlots(plan[todayKey], recipes);
   const next = horizon.slice(1, 4).map((k) => dayInfo(k, todayKey));
@@ -27,10 +29,122 @@ export default function Home() {
     if (readStorage('localStorage', key, '') === todayKey) return;
     const id = setTimeout(() => {
       writeStorage('localStorage', key, todayKey);
-      showBanner({ title: alertTitle, text: 'Klepněte a zkontrolujte košík na Rohlíku.', to: alertTo });
+      showBanner({
+        title: alertTitle,
+        text: `${isDesktop ? 'Klikněte' : 'Klepněte'} a zkontrolujte košík na Rohlíku.`,
+        to: alertTo,
+      });
     }, 600);
     return () => clearTimeout(id);
-  }, [alertTitle, alertTo, todayKey, showBanner]);
+  }, [alertTitle, alertTo, todayKey, showBanner, isDesktop]);
+
+  const alertCard = alert && (
+    <div className="alert-card">
+      <div className="alert-card__head">
+        <div className="alert-card__icon">
+          <Icon name="schedule" size={isDesktop ? 24 : 21} />
+        </div>
+        <div className="stack" style={{ gap: 3, minWidth: 0 }}>
+          <div className="alert-card__title">{alert.title}</div>
+          <div className="alert-card__text">{alert.text}</div>
+        </div>
+      </div>
+      <button type="button" className="btn btn--sm" onClick={() => navigate(alertTo)}>
+        <Icon name="shopping_basket" size={20} />
+        {alert.allInCart ? 'Dokončit objednávku' : 'Zkontrolovat košík'}
+      </button>
+    </div>
+  );
+
+  const emptyToday = (
+    <div className="empty-card" style={{ padding: '28px 24px' }}>
+      <span style={{ fontSize: 40 }}>🍽️</span>
+      <div className="empty-card__title">Na dnešek nic naplánováno</div>
+      <div className="empty-card__text">Vyberte si z receptů a naplánujte dnešní jídla.</div>
+      <button
+        type="button"
+        className="btn btn--soft btn--sm btn--auto"
+        onClick={() => navigate('/plan', { state: { day: todayKey } })}
+      >
+        Naplánovat dnešek
+      </button>
+    </div>
+  );
+
+  if (isDesktop) {
+    return (
+      <div className="screen">
+        <div className="row--between" style={{ alignItems: 'flex-end', gap: 24 }}>
+          <div className="stack" style={{ gap: 6 }}>
+            <div className="home__date" style={{ fontSize: 15 }}>
+              {today.long}
+            </div>
+            <h1 className="h-title">Co dnes vaříme</h1>
+          </div>
+          <button type="button" className="btn btn--outline-d" onClick={() => navigate('/plan')}>
+            <Icon name="calendar_month" size={20} />
+            Otevřít plán
+          </button>
+        </div>
+
+        {alertCard}
+
+        <div className="home__cols">
+          <div className="stack" style={{ gap: 12 }}>
+            <h2 className="h-section">Dnes</h2>
+            {todaySlots.length > 0 ? (
+              <div className="home__today-grid">
+                {todaySlots.map((s) => {
+                  const rid = plan[todayKey][s.key];
+                  return (
+                    <Link key={s.key} to={`/recipes/${rid}`} className="home__meal-card">
+                      <Thumb rid={rid} radius={0} emojiSize={58} className="home__meal-img" />
+                      <div className="stack" style={{ gap: 3, padding: '14px 16px 16px' }}>
+                        <div className="eyebrow">{s.label}</div>
+                        <div className="home__meal-name">{recipes[rid].name}</div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            ) : (
+              emptyToday
+            )}
+          </div>
+          <div className="stack" style={{ gap: 12 }}>
+            <h2 className="h-section">Další dny</h2>
+            {next.map((d) => {
+              const st = STATUS[statusOf(d.key)];
+              return (
+                <button
+                  type="button"
+                  key={d.key}
+                  className="home__day-row"
+                  onClick={() => navigate('/plan', { state: { day: d.key } })}
+                >
+                  <div className="home__day-row-date">
+                    <div className="home__day-name" style={{ fontSize: 12, fontWeight: 700 }}>
+                      {cap(d.dl)}
+                    </div>
+                    <div className="serif" style={{ fontSize: 34, lineHeight: 1 }}>
+                      {d.num}.
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, fontSize: 14, color: 'var(--muted)' }}>
+                    {mealCountLabel(mealCount(plan[d.key], recipes))}
+                  </div>
+                  <div className="home__day-status" style={{ color: st.fg, fontSize: 12.5 }}>
+                    <span className="dot" style={{ background: st.dot }} />
+                    {st.label}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="screen">
@@ -58,23 +172,7 @@ export default function Home() {
         <h1 className="h-title">Co dnes vaříme</h1>
       </div>
 
-      {alert && (
-        <div className="alert-card">
-          <div className="alert-card__head">
-            <div className="alert-card__icon">
-              <Icon name="schedule" size={21} />
-            </div>
-            <div className="stack" style={{ gap: 3 }}>
-              <div className="alert-card__title">{alert.title}</div>
-              <div className="alert-card__text">{alert.text}</div>
-            </div>
-          </div>
-          <button type="button" className="btn btn--sm" onClick={() => navigate(alertTo)}>
-            <Icon name="shopping_basket" size={20} />
-            {alert.allInCart ? 'Dokončit objednávku' : 'Zkontrolovat košík'}
-          </button>
-        </div>
-      )}
+      {alertCard}
 
       {todaySlots.length > 0 ? (
         <div className="list-card" style={{ padding: '6px 16px' }}>
@@ -93,18 +191,7 @@ export default function Home() {
           })}
         </div>
       ) : (
-        <div className="empty-card" style={{ padding: '28px 24px' }}>
-          <span style={{ fontSize: 40 }}>🍽️</span>
-          <div className="empty-card__title">Na dnešek nic naplánováno</div>
-          <div className="empty-card__text">Vyberte si z receptů a naplánujte dnešní jídla.</div>
-          <button
-            type="button"
-            className="btn btn--soft btn--sm btn--auto"
-            onClick={() => navigate('/plan', { state: { day: todayKey } })}
-          >
-            Naplánovat dnešek
-          </button>
-        </div>
+        emptyToday
       )}
 
       <div className="stack" style={{ gap: 12 }}>

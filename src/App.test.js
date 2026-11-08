@@ -9,6 +9,7 @@ import {
   shoppingListText,
 } from './lib/meals';
 import { JOIN_CODE_RE, generateJoinCode, normalizeJoinCode } from './lib/joinCode';
+import { capitalizeFirst, householdDisplayName, initial } from './lib/text';
 
 describe('date keys', () => {
   test('uses the local date, not UTC', () => {
@@ -118,5 +119,23 @@ describe('join codes', () => {
   test('generated codes match the contract alphabet', () => {
     for (let i = 0; i < 50; i++) expect(generateJoinCode()).toMatch(JOIN_CODE_RE);
     expect(normalizeJoinCode('ab cd-23 45xyz')).toBe('ABCD2345');
+  });
+});
+
+describe('display names', () => {
+  test('capitalizeFirst uppercases only the first letter (Czech too)', () => {
+    expect(capitalizeFirst('procházkovi')).toBe('Procházkovi');
+    expect(capitalizeFirst('  vojta ')).toBe('Vojta');
+    expect(capitalizeFirst('čeněk')).toBe('Čeněk');
+    expect(capitalizeFirst('McDonald')).toBe('McDonald');
+    expect(capitalizeFirst('')).toBe('');
+    expect(capitalizeFirst(null)).toBe('');
+  });
+
+  test('household name fallback and initials', () => {
+    expect(householdDisplayName('')).toBe('Naše domácnost');
+    expect(householdDisplayName('procházkovi')).toBe('Procházkovi');
+    expect(initial('šárka')).toBe('Š');
+    expect(initial('')).toBe('?');
   });
 });

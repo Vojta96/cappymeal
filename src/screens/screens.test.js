@@ -16,6 +16,7 @@ import Cart from './Cart';
 import CartDone from './CartDone';
 import Notifications from './Notifications';
 import Login from './Login';
+import AppLayout from '../components/AppLayout';
 
 jest.mock('../firebase', () => ({ app: {}, db: {}, auth: {} }));
 jest.mock('firebase/database', () => ({}));
@@ -68,6 +69,7 @@ const household = {
   members: { u1: { nickname: 'vojta', joinedAt: 1 } },
   settings: { remind3d: true, remindDaily: true, remindBoth: true, remindHour: 9 },
   joinCode: 'ABCD2345',
+  name: 'procházkovi',
   activity: [{ id: 'a1', type: 'plan', text: 'Jana přidal(a) oběd', by: 'u2', at: Date.now() }],
   alert: buildAlert(today, horizon, statusOf),
   pendingDays: horizon.filter((k) => statusOf(k) === 'pending'),
@@ -161,4 +163,73 @@ test('Přihlášení / registrace', () => {
   renderAt('/login', <Login />);
   fireEvent.click(screen.getByText('Registrovat se'));
   expect(screen.getByText('Heslo znovu')).toBeInTheDocument();
+});
+
+describe('desktop layout (>= 1024px)', () => {
+  const original = window.matchMedia;
+  window.scrollTo = () => {}; // not implemented in jsdom
+  beforeEach(() => {
+    window.matchMedia = (query) => ({
+      matches: query.includes('min-width: 1024px'),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+    });
+  });
+  afterEach(() => {
+    window.matchMedia = original;
+  });
+
+  test('app shell renders the sidebar instead of the tab bar', () => {
+    const { container } = render(
+      <AuthContext.Provider value={auth}>
+        <HouseholdContext.Provider value={household}>
+          <BannerProvider>
+            <MemoryRouter initialEntries={['/']}>
+              <Routes>
+                <Route element={<AppLayout />}>
+                  <Route path="/" element={<div>Obsah</div>} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </BannerProvider>
+        </HouseholdContext.Provider>
+      </AuthContext.Provider>
+    );
+    expect(container.querySelector('.sidebar')).not.toBeNull();
+    expect(container.querySelector('.tabbar')).toBeNull();
+    expect(screen.getByText('Procházkovi')).toBeInTheDocument();
+    expect(screen.getByText('1 člen')).toBeInTheDocument();
+    expect(screen.getByText('Upozornění')).toBeInTheDocument();
+    expect(screen.getByText('Obsah')).toBeInTheDocument();
+  });
+
+  test('plan shows the week grid', () => {
+    renderAt('/plan', <Plan />);
+    expect(document.querySelector('.plan-grid')).not.toBeNull();
+    expect(screen.getAllByText('Těstoviny Bolognese')).toHaveLength(2);
+  });
+
+  test('mobile shell keeps the tab bar', () => {
+    window.matchMedia = undefined;
+    const { container } = render(
+      <AuthContext.Provider value={auth}>
+        <HouseholdContext.Provider value={household}>
+          <BannerProvider>
+            <MemoryRouter initialEntries={['/']}>
+              <Routes>
+                <Route element={<AppLayout />}>
+                  <Route path="/" element={<div>Obsah</div>} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </BannerProvider>
+        </HouseholdContext.Provider>
+      </AuthContext.Provider>
+    );
+    expect(container.querySelector('.sidebar')).toBeNull();
+    expect(container.querySelector('.tabbar')).not.toBeNull();
+  });
 });

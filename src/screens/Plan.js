@@ -7,6 +7,7 @@ import { Icon } from '../components/ui';
 import { dayInfo, plural, HORIZON_DAYS } from '../lib/dates';
 import { SLOTS, SLOT_BY_KEY, STATUS } from '../lib/meals';
 import { readStorage, writeStorage } from '../lib/storage';
+import { useIsDesktop } from '../hooks/useMediaQuery';
 import './plan.css';
 
 const VIEW_KEY = 'cappymeal-plan-view';
@@ -24,7 +25,8 @@ export default function Plan() {
     const idx = horizon.indexOf(base.selDay);
     return { range: base.range, selDay: base.selDay, start: startFor(idx, base.range) };
   });
-  const [sheet, setSheet] = useState(null); // { slot }
+  const [sheet, setSheet] = useState(null); // { slot, day }
+  const isDesktop = useIsDesktop();
   const [sheetQ, setSheetQ] = useState('');
   const [allTypes, setAllTypes] = useState(false);
 
@@ -70,10 +72,10 @@ export default function Plan() {
   };
 
   const closeSheet = useCallback(() => setSheet(null), []);
-  const openSheet = (slot) => {
+  const openSheet = (slot, day = view.selDay) => {
     setSheetQ('');
     setAllTypes(false);
-    setSheet({ slot });
+    setSheet({ slot, day });
   };
 
   const sheetItems = useMemo(() => {
@@ -85,6 +87,212 @@ export default function Plan() {
   }, [sheet, sheetQ, allTypes, recipes]);
 
   const slotMeta = sheet ? SLOT_BY_KEY[sheet.slot] : null;
+
+  const sheetEl = (
+      <BottomSheet
+        open={!!sheet}
+        onClose={closeSheet}
+        title={slotMeta ? `Vybrat ${slotMeta.acc}` : ''}
+        sub={sheet ? dayInfo(sheet.day).long : ''}
+        head={
+          <>
+            <div className="search sheet-search">
+              <Icon name="search" size={20} />
+              <input
+                value={sheetQ}
+                onChange={(e) => setSheetQ(e.target.value)}
+                placeholder="Hledat"
+                aria-label="Hledat recept"
+              />
+            </div>
+            <div className="chips">
+              <button
+                type="button"
+                className={`chip${!allTypes ? ' chip--on' : ''}`}
+                style={{ height: 32 }}
+                onClick={() => setAllTypes(false)}
+              >
+                {slotMeta ? slotMeta.label : ''}
+              </button>
+              <button
+                type="button"
+                className={`chip${allTypes ? ' chip--on' : ''}`}
+                style={{ height: 32 }}
+                onClick={() => setAllTypes(true)}
+              >
+                Všechny recepty
+              </button>
+            </div>
+          </>
+        }
+      >
+        {sheetItems.map(([rid, r]) => (
+          <button
+            type="button"
+            key={rid}
+            className="sheet-item"
+            onClick={() => {
+              setMeal(sheet.day, sheet.slot, rid);
+              setSheet(null);
+            }}
+          >
+            <Thumb rid={rid} size={50} radius={13} emojiSize={24} lazy />
+            <div className="list-row__body">
+              <div className="list-row__title">{r.name}</div>
+              <div className="list-row__sub">{r.preparation}</div>
+            </div>
+            <Icon name="add_circle" className="sheet-item__add" />
+          </button>
+        ))}
+        {sheetItems.length === 0 && (
+          <div className="muted" style={{ textAlign: 'center', padding: '24px 0', fontSize: 14 }}>
+            Nic nenalezeno.
+          </div>
+        )}
+      </BottomSheet>
+  );
+
+  if (isDesktop) {
+    const cols = `96px repeat(${len}, minmax(124px, 1fr))`;
+    return (
+      <div className="screen screen--wide">
+        <div className="row" style={{ gap: 20, flexWrap: 'wrap' }}>
+          <h1 className="h-title" style={{ marginRight: 'auto' }}>
+            Plán
+          </h1>
+          <div className="row" style={{ gap: 8 }}>
+            <button
+              type="button"
+              className="icon-btn icon-btn--sm plan__arrow"
+              style={{ opacity: start > 0 ? 1 : 0.35 }}
+              disabled={start <= 0}
+              onClick={() => shift(-1)}
+              aria-label="Předchozí období"
+            >
+              <Icon name="chevron_left" />
+            </button>
+            <div className="plan__period">
+              {first.shortLabel} – {last.shortLabel}
+            </div>
+            <button
+              type="button"
+              className="icon-btn icon-btn--sm plan__arrow"
+              style={{ opacity: start < maxStart ? 1 : 0.35 }}
+              disabled={start >= maxStart}
+              onClick={() => shift(1)}
+              aria-label="Další období"
+            >
+              <Icon name="chevron_right" />
+            </button>
+          </div>
+          <div className="segment plan__segment" role="tablist">
+            <button type="button" className={view.range === '3' ? 'on' : ''} onClick={() => setRange('3')}>
+              3 dny
+            </button>
+            <button type="button" className={view.range === '7' ? 'on' : ''} onClick={() => setRange('7')}>
+              Týden
+            </button>
+          </div>
+          {visPend.length > 0 && (
+            <button
+              type="button"
+              className="btn btn--dark btn--d plan__order"
+              onClick={() => navigate('/cart', { state: { days: visPend } })}
+            >
+              <Icon name="local_shipping" size={20} />
+              Objednat {visPend.length} {plural(visPend.length, 'den', 'dny', 'dní')} z Rohlíku
+            </button>
+          )}
+        </div>
+
+        <div className="plan-grid">
+          <div className="plan-grid__row" style={{ gridTemplateColumns: cols }}>
+            <div />
+            {vis.map((d) => {
+              const st = statusOf(d.key);
+              const S = STATUS[st];
+              const o = orders[d.key];
+              const changed = o && o.planChanged && (st === 'ordered' || st === 'in_cart');
+              return (
+                <div
+                  key={d.key}
+                  className="plan-grid__head"
+                  style={{ background: d.index === 0 ? '#F0E3CE' : 'var(--card)' }}
+                >
+                  <div className="row" style={{ alignItems: 'baseline', gap: 6 }}>
+                    <span className="plan-grid__short">{d.index === 0 ? 'Dnes' : d.short}</span>
+                    <span className="serif" style={{ fontSize: 28, lineHeight: 1 }}>
+                      {d.num}.
+                    </span>
+                  </div>
+                  <div className="plan-grid__status" style={{ color: S.fg }}>
+                    <span className="dot" style={{ width: 7, height: 7, background: S.dot }} />
+                    {S.label}
+                    {changed && (
+                      <span title="Plán se změnil po objednání – zkontrolujte košík." style={{ display: 'flex' }}>
+                        <Icon name="info" size={15} />
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {SLOTS.map((s) => (
+            <div key={s.key} className="plan-grid__row" style={{ gridTemplateColumns: cols }}>
+              <div className="eyebrow" style={{ paddingTop: 14 }}>
+                {s.label}
+              </div>
+              {vis.map((d) => {
+                const rid = plan[d.key] && plan[d.key][s.key];
+                const r = rid && recipes[rid];
+                return (
+                  <div key={d.key} className="plan-grid__cell">
+                    {r ? (
+                      <div
+                        className="plan-grid__meal"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate(`/recipes/${rid}`)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') navigate(`/recipes/${rid}`);
+                        }}
+                      >
+                        <Thumb rid={rid} radius={0} emojiSize={34} className="plan-grid__img" />
+                        <div className="plan-grid__name">{r.name}</div>
+                        <button
+                          type="button"
+                          className="plan-grid__remove"
+                          title="Odebrat"
+                          aria-label={`Odebrat ${s.acc}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeMeal(d.key, s.key);
+                          }}
+                        >
+                          <Icon name="close" size={17} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="plan-grid__add"
+                        aria-label={`Přidat ${s.acc} – ${d.long}`}
+                        onClick={() => openSheet(s.key, d.key)}
+                      >
+                        <Icon name="add" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        {sheetEl}
+      </div>
+    );
+  }
 
   return (
     <div className="screen screen--fill" style={{ gap: 18 }}>
@@ -220,67 +428,7 @@ export default function Plan() {
         </div>
       )}
 
-      <BottomSheet
-        open={!!sheet}
-        onClose={closeSheet}
-        title={slotMeta ? `Vybrat ${slotMeta.acc}` : ''}
-        sub={sel.long}
-        head={
-          <>
-            <div className="search sheet-search">
-              <Icon name="search" size={20} />
-              <input
-                value={sheetQ}
-                onChange={(e) => setSheetQ(e.target.value)}
-                placeholder="Hledat"
-                aria-label="Hledat recept"
-              />
-            </div>
-            <div className="chips">
-              <button
-                type="button"
-                className={`chip${!allTypes ? ' chip--on' : ''}`}
-                style={{ height: 32 }}
-                onClick={() => setAllTypes(false)}
-              >
-                {slotMeta ? slotMeta.label : ''}
-              </button>
-              <button
-                type="button"
-                className={`chip${allTypes ? ' chip--on' : ''}`}
-                style={{ height: 32 }}
-                onClick={() => setAllTypes(true)}
-              >
-                Všechny recepty
-              </button>
-            </div>
-          </>
-        }
-      >
-        {sheetItems.map(([rid, r]) => (
-          <button
-            type="button"
-            key={rid}
-            className="sheet-item"
-            onClick={() => {
-              setMeal(view.selDay, sheet.slot, rid);
-              setSheet(null);
-            }}
-          >
-            <Thumb rid={rid} size={50} radius={13} emojiSize={24} lazy />
-            <div className="list-row__body">
-              <div className="list-row__title">{r.name}</div>
-              <div className="list-row__sub">{r.preparation}</div>
-            </div>
-            <Icon name="add_circle" className="sheet-item__add" />
-          </button>
-        ))}
-        {sheetItems.length === 0 && (
-          <div className="muted" style={{ textAlign: 'center', padding: '24px 0', fontSize: 14 }}>
-            Nic nenalezeno.
-          </div>
-        )}
-      </BottomSheet>
+      {sheetEl}
     </div>
   );
 }

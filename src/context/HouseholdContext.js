@@ -23,10 +23,11 @@ import { useAuth } from './AuthContext';
 import { dateKey, dayInfo, horizonKeys } from '../lib/dates';
 import { SLOT_BY_KEY, dayStatus, buildAlert } from '../lib/meals';
 import { DEFAULT_SETTINGS } from '../services/household';
+import { capitalizeFirst } from '../lib/text';
 
 export const HouseholdContext = createContext(null);
 
-const SUBTREES = ['recipes', 'plan', 'orders', 'pantry', 'settings', 'members', 'joinCode'];
+const SUBTREES = ['recipes', 'plan', 'orders', 'pantry', 'settings', 'members', 'joinCode', 'name'];
 
 function useTodayKey() {
   const [today, setToday] = useState(() => dateKey());
@@ -249,6 +250,11 @@ export function HouseholdProvider({ hid, children }) {
 
   const updateSettings = useCallback((patch) => update(ref(db, `${base}/settings`), patch), [base]);
 
+  const updateHouseholdName = useCallback(
+    (name) => set(ref(db, `${base}/name`), capitalizeFirst(name) || null),
+    [base]
+  );
+
   const value = useMemo(
     () => ({
       hid,
@@ -264,6 +270,7 @@ export function HouseholdProvider({ hid, children }) {
       members,
       settings,
       joinCode: data.joinCode || '',
+      name: data.name || '',
       activity,
       alert,
       pendingDays,
@@ -278,12 +285,13 @@ export function HouseholdProvider({ hid, children }) {
       setOrderStatus,
       clearOrder,
       updateSettings,
+      updateHouseholdName,
       logActivity,
     }),
     [
       hid, uid, nickname, ready, todayKey, horizon, recipes, plan, orders, pantry, members, settings,
-      data.joinCode, activity, alert, pendingDays, statusOf, requestPhoto, photoFor, setMeal, removeMeal,
-      saveRecipe, deleteRecipe, togglePantry, setOrderStatus, clearOrder, updateSettings, logActivity,
+      data.joinCode, data.name, activity, alert, pendingDays, statusOf, requestPhoto, photoFor, setMeal, removeMeal,
+      saveRecipe, deleteRecipe, togglePantry, setOrderStatus, clearOrder, updateSettings, updateHouseholdName, logActivity,
     ]
   );
 

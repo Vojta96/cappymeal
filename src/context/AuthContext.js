@@ -5,8 +5,9 @@ import {
   signOut,
   onAuthStateChanged,
 } from 'firebase/auth';
-import { ref, onValue, set } from 'firebase/database';
+import { ref, onValue, set, get, update } from 'firebase/database';
 import { auth, db } from '../firebase';
+import { capitalizeFirst } from '../lib/text';
 
 export const AuthContext = createContext(null);
 
@@ -50,16 +51,32 @@ export function AuthProvider({ children }) {
   const register = useCallback(async (nickname, password) => {
     const cred = await createUserWithEmailAndPassword(auth, toEmail(nickname), password);
     await set(ref(db, `users/${cred.user.uid}`), {
-      nickname: nickname.trim(),
+      nickname: capitalizeFirst(nickname),
       householdId: null,
     });
     return cred;
   }, []);
 
-  const login = useCallback(
-    (nickname, password) => signInWithEmailAndPassword(auth, toEmail(nickname), password),
-    []
-  );
+  const login = useCallback(async (nickname, password) => {
+    const cred = await signInWithEmailAndPassword(auth, toEmail(nickname), password);
+    // Older accounts stored no nickname or the lowercase email-derived one ("vojta").
+    // Save the nickname as typed, capitalized, to the profile and household membership.
+    try {
+      const uid = cred.user.uid;
+      const snap = await get(ref(db, `users/${uid}`));
+      const prof = snap.val() || {};
+      const stored = prof.nickname;
+      const display = capitalizeFirst(nickname);
+      if (display && (!stored || stored === normalizeNickname(nickname)) && stored !== display) {
+        const updates = { [`users/${uid}/nickname`]: display };
+        if (prof.householdId) updates[`households/${prof.householdId}/members/${uid}/nickname`] = display;
+        await update(ref(db), updates);
+      }
+    } catch (e) {
+      // non-fatal – login already succeeded
+    }
+    return cred;
+  }, []);
 
   const logout = useCallback(() => signOut(auth), []);
 
@@ -69,7 +86,7 @@ export function AuthProvider({ children }) {
       loading,
       profile,
       profileLoading,
-      nickname: (profile && profile.nickname) || nicknameFromUser(user),
+      nickname: capitalizeFirst((profile && profile.nickname) || nicknameFromUser(user)),
       householdId: (profile && profile.householdId) || null,
       login,
       register,

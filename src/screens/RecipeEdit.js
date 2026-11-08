@@ -46,7 +46,7 @@ export default function RecipeEdit() {
             : [{ name: '', amount: '' }],
           instructions: existing.instructions || '',
         }
-      : emptyDraft()
+      : emptyDraft(),
   );
   const [photo, setPhoto] = useState(undefined); // undefined = keep, string = new
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -64,10 +64,12 @@ export default function RecipeEdit() {
       return { ...d, ingredients: a };
     });
 
-  const onPhoto = async (e) => {
-    const f = e.target.files && e.target.files[0];
-    e.target.value = '';
+  const handleFile = async (f) => {
     if (!f) return;
+    if (f.type && !f.type.startsWith('image/')) {
+      setError('Vyberte prosím obrázek.');
+      return;
+    }
     setError('');
     setPhotoBusy(true);
     try {
@@ -77,6 +79,17 @@ export default function RecipeEdit() {
     } finally {
       setPhotoBusy(false);
     }
+  };
+
+  const onPhoto = (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    handleFile(f);
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    handleFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
   };
 
   const cancel = () => navigate(isNew ? '/recipes' : `/recipes/${id}`, { replace: true });
@@ -115,7 +128,7 @@ export default function RecipeEdit() {
 
   return (
     <div className="screen" style={{ gap: 20, paddingBottom: 'calc(var(--safe-bottom) + 32px)' }}>
-      <div className="row--between">
+      <div className="row--between only-mobile">
         <button type="button" className="icon-btn" onClick={cancel} aria-label="Zrušit">
           <Icon name="close" />
         </button>
@@ -131,136 +144,176 @@ export default function RecipeEdit() {
         </button>
       </div>
 
-      {error && <div className="form-error">{error}</div>}
-
-      <label className={`edit__photo${shownImg ? ' edit__photo--has' : ''}`}>
-        <input ref={fileRef} type="file" accept="image/*" onChange={onPhoto} style={{ display: 'none' }} />
-        {photoBusy ? (
-          <Spinner />
-        ) : shownImg ? (
-          <>
-            <img src={shownImg} alt="" />
-            <span className="edit__photo-change">
-              <Icon name="photo_camera" size={18} />
-              Změnit fotku
-            </span>
-          </>
-        ) : (
-          <div className="edit__photo-empty">
-            <div className="edit__photo-icon">
-              <Icon name="add_a_photo" size={26} />
-            </div>
-            <div style={{ fontSize: 15, fontWeight: 700 }}>Nahrát fotku</div>
-            <div style={{ fontSize: 12.5, color: 'var(--muted-3)' }}>Vyfoťte hotové jídlo nebo vyberte z galerie</div>
-          </div>
-        )}
-      </label>
-
-      <div className="row" style={{ gap: 10, alignItems: 'flex-end' }}>
-        <label className="field" style={{ flex: 1 }}>
-          Název
-          <input
-            className="input"
-            value={draft.name}
-            onChange={(e) => setD({ name: e.target.value })}
-            placeholder="Např. Kuřecí curry"
-          />
-        </label>
-        <input
-          className="edit__emoji"
-          value={draft.emoji}
-          onChange={(e) => setD({ emoji: lastGrapheme(e.target.value) })}
-          aria-label="Emoji receptu"
-          title="Emoji, které se ukáže, když recept nemá fotku"
-        />
-      </div>
-
-      <div className="stack">
-        <div className="field">Typ jídla</div>
-        <div className="chips">
-          {SLOTS.map((s) => (
-            <button
-              type="button"
-              key={s.key}
-              className={`chip${draft.type === s.key ? ' chip--on' : ''}`}
-              onClick={() => setD({ type: s.key })}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <label className="field">
-        Příprava
-        <input
-          className="input"
-          value={draft.preparation}
-          onChange={(e) => setD({ preparation: e.target.value })}
-          placeholder="Vaření, Pečení…"
-        />
-      </label>
-
-      <div className="stack">
-        <div className="field">Suroviny</div>
-        {draft.ingredients.map((g, i) => (
-          <div className="edit__ing" key={i}>
-            <input
-              className="input input--amount"
-              value={g.amount}
-              onChange={(e) => setIng(i, { amount: e.target.value })}
-              placeholder="Množství"
-              aria-label="Množství"
-            />
-            <input
-              className="input"
-              style={{ flex: 1 }}
-              value={g.name}
-              onChange={(e) => setIng(i, { name: e.target.value })}
-              placeholder="Surovina"
-              aria-label="Surovina"
-            />
-            <button
-              type="button"
-              className="icon-btn icon-btn--plain"
-              onClick={() => setD({ ingredients: draft.ingredients.filter((_, j) => j !== i) })}
-              aria-label="Odebrat surovinu"
-            >
-              <Icon name="remove_circle" />
-            </button>
-          </div>
-        ))}
+      <div className="row only-desktop" style={{ gap: 12 }}>
+        <h1 className="serif edit__title">{isNew ? 'Nový recept' : 'Upravit recept'}</h1>
+        <button type="button" className="btn btn--outline-d" style={{ fontSize: 15 }} onClick={cancel}>
+          Zrušit
+        </button>
         <button
           type="button"
-          className="edit__add-ing"
-          onClick={() => setD({ ingredients: [...draft.ingredients, { name: '', amount: '' }] })}
+          className="btn btn--d"
+          style={{ fontSize: 15, padding: '0 22px' }}
+          onClick={save}
+          disabled={saving || photoBusy}
         >
-          <Icon name="add" size={19} />
-          Přidat surovinu
+          {saving ? <Spinner small /> : 'Uložit recept'}
         </button>
       </div>
 
-      <label className="field">
-        Postup
-        <textarea
-          className="input"
-          rows={5}
-          value={draft.instructions}
-          onChange={(e) => setD({ instructions: e.target.value })}
-          placeholder="Jak na to…"
-        />
-      </label>
+      {error && <div className="form-error">{error}</div>}
 
-      <button type="button" className="btn" style={{ fontSize: 16 }} onClick={save} disabled={saving || photoBusy}>
-        {saving ? <Spinner small /> : 'Uložit recept'}
-      </button>
+      <div className="edit__grid">
+        <label
+          className={`edit__photo${shownImg ? ' edit__photo--has' : ''}`}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={onDrop}
+        >
+          <input ref={fileRef} type="file" accept="image/*" onChange={onPhoto} style={{ display: 'none' }} />
+          {photoBusy ? (
+            <Spinner />
+          ) : shownImg ? (
+            <>
+              <img src={shownImg} alt="" />
+              <span className="edit__photo-change">
+                <Icon name="photo_camera" size={18} />
+                Změnit fotku
+              </span>
+            </>
+          ) : (
+            <div className="edit__photo-empty">
+              <div className="edit__photo-icon">
+                <Icon name="add_a_photo" size={26} />
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>Nahrát fotku</div>
+              <div className="edit__photo-hint">
+                <span className="only-mobile">Vyfoťte hotové jídlo nebo vyberte z galerie</span>
+                <span className="only-desktop">Přetáhněte sem obrázek nebo klikněte a vyberte</span>
+              </div>
+            </div>
+          )}
+        </label>
 
-      {!isNew && (
-        <button type="button" className="btn btn--danger btn--sm" onClick={del} disabled={saving}>
-          <Icon name="delete" size={20} />
-          Smazat recept
-        </button>
-      )}
+        <div className="edit__fields">
+          <div className="row" style={{ gap: 10, alignItems: 'flex-end' }}>
+            <label className="field" style={{ flex: 1 }}>
+              Název
+              <input
+                className="input"
+                value={draft.name}
+                onChange={(e) => setD({ name: e.target.value })}
+                placeholder="Např. Kuřecí curry"
+              />
+            </label>
+            <input
+              className="edit__emoji"
+              value={draft.emoji}
+              onChange={(e) => setD({ emoji: lastGrapheme(e.target.value) })}
+              aria-label="Emoji receptu"
+              title="Emoji, které se ukáže, když recept nemá fotku"
+            />
+          </div>
+
+          <div className="edit__row2">
+            <div className="stack">
+              <div className="field">Typ jídla</div>
+              <div className="chips">
+                {SLOTS.map((s) => (
+                  <button
+                    type="button"
+                    key={s.key}
+                    className={`chip${draft.type === s.key ? ' chip--on' : ''}`}
+                    onClick={() => setD({ type: s.key })}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="field">
+              Příprava
+              <input
+                className="input"
+                value={draft.preparation}
+                onChange={(e) => setD({ preparation: e.target.value })}
+                placeholder="Vaření, Pečení…"
+              />
+            </label>
+          </div>
+
+          <div className="stack">
+            <div className="field">Suroviny</div>
+            {draft.ingredients.map((g, i) => (
+              <div className="edit__ing" key={i}>
+                <input
+                  className="input input--amount"
+                  value={g.amount}
+                  onChange={(e) => setIng(i, { amount: e.target.value })}
+                  placeholder="Množství"
+                  aria-label="Množství"
+                />
+                <input
+                  className="input"
+                  style={{ flex: 1 }}
+                  value={g.name}
+                  onChange={(e) => setIng(i, { name: e.target.value })}
+                  placeholder="Surovina"
+                  aria-label="Surovina"
+                />
+                <button
+                  type="button"
+                  className="icon-btn icon-btn--plain"
+                  onClick={() => setD({ ingredients: draft.ingredients.filter((_, j) => j !== i) })}
+                  aria-label="Odebrat surovinu"
+                >
+                  <Icon name="remove_circle" />
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="edit__add-ing"
+              onClick={() => setD({ ingredients: [...draft.ingredients, { name: '', amount: '' }] })}
+            >
+              <Icon name="add" size={19} />
+              Přidat surovinu
+            </button>
+          </div>
+
+          <label className="field">
+            Postup
+            <textarea
+              className="input"
+              rows={5}
+              value={draft.instructions}
+              onChange={(e) => setD({ instructions: e.target.value })}
+              placeholder="Jak na to…"
+            />
+          </label>
+
+          <button
+            type="button"
+            className="btn only-mobile"
+            style={{ fontSize: 16 }}
+            onClick={save}
+            disabled={saving || photoBusy}
+          >
+            {saving ? <Spinner small /> : 'Uložit recept'}
+          </button>
+
+          {!isNew && (
+            <button
+              type="button"
+              className="btn btn--danger btn--sm edit__delete"
+              onClick={del}
+              disabled={saving}
+            >
+              <Icon name="delete" size={20} />
+              Smazat recept
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

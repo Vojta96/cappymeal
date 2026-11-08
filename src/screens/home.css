@@ -100,3 +100,107 @@
   font-size: 11.5px;
   font-weight: 700;
 }
+
+@media (min-width: 1024px) {
+  .alert-card {
+    flex-direction: row;
+    align-items: center;
+    gap: 18px;
+    padding: 20px 24px;
+  }
+
+  .alert-card__head {
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+    gap: 18px;
+  }
+
+  .alert-card__icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 23px;
+  }
+
+  .alert-card__title {
+    font-size: 17px;
+  }
+
+  .alert-card__text {
+    font-size: 14px;
+  }
+
+  .alert-card .btn {
+    width: auto;
+    height: 48px;
+    padding: 0 20px;
+    flex-shrink: 0;
+  }
+
+  .home__cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+
+  .home__today-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .home__meal-card {
+    background: var(--card);
+    border-radius: 22px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    text-decoration: none;
+    color: var(--ink);
+    transition: box-shadow 0.2s;
+  }
+
+  .home__meal-card:hover {
+    box-shadow: 0 10px 28px rgba(46, 32, 16, 0.1);
+    color: var(--ink);
+  }
+
+  .home__meal-img {
+    width: 100%;
+    height: 150px;
+  }
+
+  .home__meal-name {
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.3;
+    text-wrap: pretty;
+  }
+
+  .home__day-row {
+    background: var(--card);
+    border: none;
+    border-radius: 20px;
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    text-align: left;
+    color: var(--ink);
+    transition: box-shadow 0.2s;
+  }
+
+  .home__day-row:hover {
+    box-shadow: 0 8px 22px rgba(46, 32, 16, 0.08);
+  }
+
+  .home__day-row-date {
+    width: 56px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    flex-shrink: 0;
+  }
+}

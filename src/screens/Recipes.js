@@ -36,37 +36,37 @@ export default function Recipes() {
 
   return (
     <div className="screen screen--tight">
-      <div className="row--between">
-        <div className="row" style={{ alignItems: 'baseline', gap: 10 }}>
+      <div className="recipes__head">
+        <div className="row recipes__title" style={{ alignItems: 'baseline', gap: 10 }}>
           <h1 className="h-title" style={{ lineHeight: 1 }}>
             Recepty
           </h1>
-          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--muted-3)' }}>{all.length}</div>
+          <div className="recipes__count">{all.length}</div>
+        </div>
+        <div className="search">
+          <Icon name="search" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Hledat recept nebo surovinu"
+            aria-label="Hledat recept nebo surovinu"
+            type="search"
+          />
+          {query && (
+            <button type="button" className="icon-btn icon-btn--plain" onClick={() => setQuery('')} aria-label="Smazat hledání">
+              <Icon name="close" />
+            </button>
+          )}
         </div>
         <button
           type="button"
-          className="icon-btn icon-btn--primary"
+          className="icon-btn icon-btn--primary recipes__new"
           onClick={() => navigate('/recipes/new')}
           aria-label="Nový recept"
         >
           <Icon name="add" size={24} />
+          <span className="only-desktop">Nový recept</span>
         </button>
-      </div>
-
-      <div className="search">
-        <Icon name="search" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Hledat recept nebo surovinu"
-          aria-label="Hledat recept nebo surovinu"
-          type="search"
-        />
-        {query && (
-          <button type="button" className="icon-btn icon-btn--plain" onClick={() => setQuery('')} aria-label="Smazat hledání">
-            <Icon name="close" />
-          </button>
-        )}
       </div>
 
       <div className="chips chips--scroll">

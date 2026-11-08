@@ -73,3 +73,138 @@
   font-size: 13px;
   font-weight: 600;
 }
+
+@media (min-width: 1024px) {
+  .plan__arrow {
+    width: 40px;
+    height: 40px;
+    border-radius: 20px;
+  }
+
+  .plan__period {
+    font-size: 15px;
+    font-weight: 700;
+    min-width: 190px;
+    text-align: center;
+  }
+
+  .plan__segment button {
+    height: 36px;
+    padding: 0 16px;
+    font-size: 14px;
+  }
+
+  .plan__order {
+    height: 44px;
+    border-radius: 14px;
+    box-shadow: none;
+  }
+
+  .plan-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-x: auto;
+    margin: 0 -8px;
+    padding: 0 8px 8px;
+  }
+
+  .plan-grid__row {
+    display: grid;
+    gap: 10px;
+  }
+
+  .plan-grid__head {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 12px 10px;
+    border-radius: 18px;
+  }
+
+  .plan-grid__short {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--muted-2);
+  }
+
+  .plan-grid__status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .plan-grid__cell {
+    min-height: 132px;
+    display: flex;
+    min-width: 0;
+  }
+
+  .plan-grid__meal {
+    flex: 1;
+    background: var(--card);
+    border-radius: 18px;
+    overflow: hidden;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    transition: box-shadow 0.2s;
+    min-width: 0;
+  }
+
+  .plan-grid__meal:hover {
+    box-shadow: 0 8px 22px rgba(46, 32, 16, 0.1);
+  }
+
+  .plan-grid__img {
+    width: 100%;
+    height: 78px;
+  }
+
+  .plan-grid__name {
+    padding: 9px 11px 11px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .plan-grid__remove {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 28px;
+    height: 28px;
+    border-radius: 14px;
+    border: none;
+    background: rgba(255, 252, 247, 0.92);
+    color: var(--muted-4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .plan-grid__add {
+    flex: 1;
+    border-radius: 18px;
+    border: 1.5px dashed #ddcdb2;
+    background: transparent;
+    color: #a88a5e;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .plan-grid__add:hover {
+    background: var(--card);
+    color: var(--primary);
+  }
+}

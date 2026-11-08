@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { Icon, Spinner, Toast, Toggle } from '../components/ui';
 import { dayInfo, relativeTime } from '../lib/dates';
 import { enablePush, pushSupported } from '../services/push';
+import { capitalizeFirst, householdDisplayName, initial } from '../lib/text';
 import './notifications.css';
 
 const SETTINGS = [
@@ -28,15 +29,30 @@ const PUSH_RESULT = {
 
 const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent || '');
 const isStandalone = () =>
-  (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+  (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+  window.navigator.standalone === true;
 
 export default function Notifications() {
   const navigate = useNavigate();
   const { logout } = useAuth();
-  const { hid, uid, alert, orders, activity, members, joinCode, settings, updateSettings } = useHousehold();
+  const {
+    hid,
+    uid,
+    alert,
+    orders,
+    activity,
+    members,
+    joinCode,
+    name,
+    settings,
+    updateSettings,
+    updateHouseholdName,
+  } = useHousehold();
+  const [nameDraft, setNameDraft] = useState(capitalizeFirst(name));
+  useEffect(() => setNameDraft(capitalizeFirst(name)), [name]);
   const [supported, setSupported] = useState(null);
   const [pushState, setPushState] = useState(() =>
-    typeof Notification !== 'undefined' && Notification.permission === 'granted' ? 'granted' : null
+    typeof Notification !== 'undefined' && Notification.permission === 'granted' ? 'granted' : null,
   );
   const [pushBusy, setPushBusy] = useState(false);
   const [toast, setToast] = useState('');
@@ -127,147 +143,203 @@ export default function Notifications() {
 
   const iosNeedsInstall = isIOS() && !isStandalone();
 
+  const saveName = async () => {
+    const next = capitalizeFirst(nameDraft);
+    if (!next) {
+      setNameDraft(capitalizeFirst(name));
+      setToast('Název domácnosti nemůže být prázdný');
+      return;
+    }
+    if (next === name) {
+      setNameDraft(next);
+      return;
+    }
+    try {
+      await updateHouseholdName(next);
+      setToast('Název domácnosti uložen');
+    } catch (e) {
+      setToast('Název se nepodařilo uložit');
+    }
+  };
+
   return (
     <div className="screen" style={{ gap: 20 }}>
       <div className="row" style={{ gap: 12 }}>
-        <button type="button" className="icon-btn" onClick={() => navigate('/')} aria-label="Zpět">
+        <button
+          type="button"
+          className="icon-btn only-mobile"
+          onClick={() => navigate('/')}
+          aria-label="Zpět"
+        >
           <Icon name="arrow_back" />
         </button>
-        <h1 className="h-title" style={{ fontSize: 34, lineHeight: 1 }}>
-          Upozornění
-        </h1>
+        <h1 className="h-title notif__h1">Upozornění</h1>
       </div>
 
-      <div className="stack" style={{ gap: 10 }}>
-        {notifs.map((n) => (
-          <button
-            type="button"
-            key={n.id}
-            className="notif"
-            onClick={() => n.to && navigate(n.to, n.state ? { state: n.state } : undefined)}
-          >
-            <div className="notif__icon" style={{ background: n.bg, color: n.fg }}>
-              <Icon name={n.icon} size={21} />
-            </div>
-            <div className="list-row__body" style={{ gap: 3 }}>
-              <div className="row--between" style={{ alignItems: 'flex-start', gap: 8 }}>
-                <div className="notif__title">{n.title}</div>
-                <div className="notif__time">{n.time}</div>
-              </div>
-              <div className="notif__text">{n.text}</div>
-            </div>
-          </button>
-        ))}
-        {notifs.length === 0 && (
-          <div className="empty-card" style={{ padding: '26px 20px' }}>
-            <Icon name="notifications_off" size={34} style={{ color: 'var(--muted-3)' }} />
-            <div className="empty-card__text">Zatím žádná upozornění.</div>
-          </div>
-        )}
-      </div>
-
-      <div className="stack">
-        <h2 className="h-section">Nastavení</h2>
-        <div className="list-card">
-          {SETTINGS.map(([k, label, sub]) => (
+      <div className="notif-grid">
+        <div className="stack" style={{ gap: 10 }}>
+          {notifs.map((n) => (
             <button
               type="button"
-              key={k}
-              className="list-row"
-              role="switch"
-              aria-checked={!!settings[k]}
-              onClick={() => updateSettings({ [k]: !settings[k] })}
+              key={n.id}
+              className="notif"
+              onClick={() => n.to && navigate(n.to, n.state ? { state: n.state } : undefined)}
             >
-              <div className="list-row__body">
-                <div className="list-row__title">{label}</div>
-                <div className="list-row__sub">{sub}</div>
+              <div className="notif__icon" style={{ background: n.bg, color: n.fg }}>
+                <Icon name={n.icon} size={21} />
               </div>
-              <Toggle on={!!settings[k]} />
+              <div className="list-row__body" style={{ gap: 3 }}>
+                <div className="row--between" style={{ alignItems: 'flex-start', gap: 8 }}>
+                  <div className="notif__title">{n.title}</div>
+                  <div className="notif__time">{n.time}</div>
+                </div>
+                <div className="notif__text">{n.text}</div>
+              </div>
             </button>
           ))}
-          <div className="list-row" style={{ justifyContent: 'space-between' }}>
-            <div className="list-row__title">Čas připomínky</div>
-            <select
-              className="notif__select"
-              value={settings.remindHour}
-              onChange={(e) => updateSettings({ remindHour: Number(e.target.value) })}
-              aria-label="Čas připomínky"
-            >
-              {Array.from({ length: 16 }, (_, i) => i + 6).map((h) => (
-                <option key={h} value={h}>
-                  {h}:00
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="push-box">
-          <button
-            type="button"
-            className={`btn btn--sm${pushState === 'granted' ? ' btn--soft' : ''}`}
-            onClick={turnOnPush}
-            disabled={pushBusy || supported === false}
-          >
-            {pushBusy ? (
-              <Spinner small />
-            ) : (
-              <>
-                <Icon name={pushState === 'granted' ? 'notifications_active' : 'phone_iphone'} size={20} />
-                {pushState === 'granted' ? 'Upozornění na telefonu jsou zapnutá' : 'Zapnout upozornění na telefonu'}
-              </>
-            )}
-          </button>
-          <div className="push-box__hint">
-            {supported === false && !iosNeedsInstall
-              ? 'Tento prohlížeč upozornění nepodporuje. '
-              : ''}
-            Na iPhonu nejdřív přidejte CappyMeal na plochu (Sdílet → Přidat na plochu), otevřete ji z plochy a
-            teprve pak upozornění zapněte. Zapněte je na obou telefonech.
-          </div>
-        </div>
-      </div>
-
-      <div className="stack">
-        <h2 className="h-section">Domácnost</h2>
-        <div className="list-card">
-          <div className="list-row">
-            <div className="list-row__body">
-              <div className="list-row__sub">Kód pro připojení</div>
-              <div className="notif__code">{joinCode || '—'}</div>
+          {notifs.length === 0 && (
+            <div className="empty-card" style={{ padding: '26px 20px' }}>
+              <Icon name="notifications_off" size={34} style={{ color: 'var(--muted-3)' }} />
+              <div className="empty-card__text">Zatím žádná upozornění.</div>
             </div>
-            {joinCode && (
-              <button type="button" className="icon-btn icon-btn--sm" onClick={shareCode} aria-label="Sdílet kód">
-                <Icon name="ios_share" size={20} />
-              </button>
-            )}
-          </div>
-          {Object.entries(members).map(([mid, m]) => (
-            <div key={mid} className="list-row">
-              <div className="notif__avatar">{(m.nickname || '?').slice(0, 1).toUpperCase()}</div>
-              <div className="list-row__body">
-                <div className="list-row__title">
-                  {m.nickname}
-                  {mid === uid ? ' (vy)' : ''}
-                </div>
-                {m.joinedAt && (
-                  <div className="list-row__sub">Členem od {new Date(m.joinedAt).toLocaleDateString('cs-CZ')}</div>
-                )}
+          )}
+        </div>
+
+        <div className="notif-side">
+          <div className="stack">
+            <h2 className="h-section">
+              <span className="only-mobile">Nastavení</span>
+              <span className="only-desktop">Nastavení připomínek</span>
+            </h2>
+            <div className="list-card">
+              {SETTINGS.map(([k, label, sub]) => (
+                <button
+                  type="button"
+                  key={k}
+                  className="list-row"
+                  role="switch"
+                  aria-checked={!!settings[k]}
+                  onClick={() => updateSettings({ [k]: !settings[k] })}
+                >
+                  <div className="list-row__body">
+                    <div className="list-row__title">{label}</div>
+                    <div className="list-row__sub">{sub}</div>
+                  </div>
+                  <Toggle on={!!settings[k]} />
+                </button>
+              ))}
+              <div className="list-row" style={{ justifyContent: 'space-between' }}>
+                <div className="list-row__title">Čas připomínky</div>
+                <select
+                  className="notif__select"
+                  value={settings.remindHour}
+                  onChange={(e) => updateSettings({ remindHour: Number(e.target.value) })}
+                  aria-label="Čas připomínky"
+                >
+                  {Array.from({ length: 16 }, (_, i) => i + 6).map((h) => (
+                    <option key={h} value={h}>
+                      {h}:00
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-          ))}
-        </div>
-        {Object.keys(members).length < 2 && (
-          <div className="push-box__hint" style={{ padding: '0 4px' }}>
-            Partner(ka) se připojí tak, že se zaregistruje a na úvodní obrazovce zadá tento kód.
-          </div>
-        )}
-      </div>
 
-      <button type="button" className="btn btn--ghost btn--sm" onClick={logout}>
-        <Icon name="logout" size={20} />
-        Odhlásit se
-      </button>
+            <div className="push-box">
+              <button
+                type="button"
+                className={`btn btn--sm${pushState === 'granted' ? ' btn--soft' : ''}`}
+                onClick={turnOnPush}
+                disabled={pushBusy || supported === false}
+              >
+                {pushBusy ? (
+                  <Spinner small />
+                ) : (
+                  <>
+                    <Icon
+                      name={pushState === 'granted' ? 'notifications_active' : 'phone_iphone'}
+                      size={20}
+                    />
+                    {pushState === 'granted'
+                      ? 'Upozornění na telefonu jsou zapnutá'
+                      : 'Zapnout upozornění na telefonu'}
+                  </>
+                )}
+              </button>
+              <div className="push-box__hint">
+                {supported === false && !iosNeedsInstall ? 'Tento prohlížeč upozornění nepodporuje. ' : ''}
+                Na iPhonu nejdřív přidejte CappyMeal na plochu (Sdílet → Přidat na plochu), otevřete ji z
+                plochy a teprve pak upozornění zapněte. Zapněte je na obou telefonech.
+              </div>
+            </div>
+          </div>
+
+          <div className="stack">
+            <h2 className="h-section">{householdDisplayName(name)}</h2>
+            <div className="list-card">
+              <label className="list-row notif__name-row">
+                <div className="list-row__body">
+                  <div className="list-row__sub">Název domácnosti</div>
+                  <input
+                    className="notif__name-input"
+                    value={nameDraft}
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    onBlur={saveName}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur();
+                    }}
+                    placeholder="např. Procházkovi"
+                    maxLength={40}
+                  />
+                </div>
+                <Icon name="edit" size={19} className="notif__name-icon" />
+              </label>
+              <div className="list-row">
+                <div className="list-row__body">
+                  <div className="list-row__sub">Kód pro připojení</div>
+                  <div className="notif__code">{joinCode || '—'}</div>
+                </div>
+                {joinCode && (
+                  <button
+                    type="button"
+                    className="icon-btn icon-btn--sm"
+                    onClick={shareCode}
+                    aria-label="Sdílet kód"
+                  >
+                    <Icon name="ios_share" size={20} />
+                  </button>
+                )}
+              </div>
+              {Object.entries(members).map(([mid, m]) => (
+                <div key={mid} className="list-row">
+                  <div className="notif__avatar">{initial(m.nickname)}</div>
+                  <div className="list-row__body">
+                    <div className="list-row__title">
+                      {capitalizeFirst(m.nickname)}
+                      {mid === uid ? ' (vy)' : ''}
+                    </div>
+                    {m.joinedAt && (
+                      <div className="list-row__sub">
+                        Členem od {new Date(m.joinedAt).toLocaleDateString('cs-CZ')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {Object.keys(members).length < 2 && (
+              <div className="push-box__hint" style={{ padding: '0 4px' }}>
+                Partner(ka) se připojí tak, že se zaregistruje a na úvodní obrazovce zadá tento kód.
+              </div>
+            )}
+          </div>
+
+          <button type="button" className="btn btn--ghost btn--sm only-mobile" onClick={logout}>
+            <Icon name="logout" size={20} />
+            Odhlásit se
+          </button>
+        </div>
+      </div>
       <Toast text={toast} onDone={clearToast} />
     </div>
   );

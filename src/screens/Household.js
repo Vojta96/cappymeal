@@ -4,10 +4,12 @@ import { createHousehold, joinHousehold } from '../services/household';
 import { normalizeJoinCode } from '../lib/joinCode';
 import logo from '../Images/Cappy.png';
 import { Icon, Spinner } from '../components/ui';
+import AuthLayout from '../components/AuthLayout';
 import './auth.css';
 
 export default function Household() {
   const { user, nickname, logout } = useAuth();
+  const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(null); // 'create' | 'join'
   const [error, setError] = useState('');
@@ -26,9 +28,9 @@ export default function Household() {
   };
 
   return (
-    <div className="auth" style={{ gap: 28 }}>
+    <AuthLayout wide>
       <div className="auth__brand">
-        <div className="auth__logo" style={{ width: 88, height: 88, borderRadius: 28 }}>
+        <div className="auth__logo only-mobile" style={{ width: 88, height: 88, borderRadius: 28 }}>
           <img src={logo} alt="" style={{ width: 60, height: 60 }} />
         </div>
         <div className="auth__name" style={{ fontSize: 38 }}>
@@ -39,7 +41,17 @@ export default function Household() {
         </div>
       </div>
 
-      <div className="hh-option">
+      <form
+        className="hh-option"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!name.trim()) {
+            setError('Doplňte název domácnosti.');
+            return;
+          }
+          run('create', () => createHousehold(user.uid, nickname, name));
+        }}
+      >
         <div className="hh-option__head">
           <div className="hh-option__icon">
             <Icon name="home" />
@@ -51,15 +63,21 @@ export default function Household() {
             </div>
           </div>
         </div>
-        <button
-          type="button"
-          className="btn"
-          disabled={!!busy}
-          onClick={() => run('create', () => createHousehold(user.uid, nickname))}
-        >
+        <label className="field">
+          Název domácnosti
+          <input
+            className="input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="např. Procházkovi"
+            required
+            maxLength={40}
+          />
+        </label>
+        <button type="submit" className="btn" disabled={!!busy || !name.trim()}>
           {busy === 'create' ? <Spinner small /> : 'Založit domácnost'}
         </button>
-      </div>
+      </form>
 
       <form
         className="hh-option"
@@ -99,6 +117,6 @@ export default function Household() {
           Odhlásit se
         </button>
       </div>
-    </div>
+    </AuthLayout>
   );
 }
