@@ -309,6 +309,13 @@
   color: var(--muted);
 }
 
+.field__hint {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted-2);
+  line-height: 1.35;
+}
+
 .input {
   height: 52px;
   border-radius: 16px;

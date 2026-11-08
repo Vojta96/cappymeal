@@ -148,13 +148,21 @@ function normaliseProduct(o) {
   };
 }
 
+/** Products from a search result, best-first (server order), deduplicated by productId. */
 function parseProducts(result) {
   const arrays = [];
   for (const p of extractPayloads(result)) findProductArrays(p, arrays);
   if (!arrays.length) return [];
   const best = arrays.sort((a, b) => b.length - a.length)[0];
-  return best.map(normaliseProduct);
+  const seen = new Set();
+  return best.map(normaliseProduct).filter((p) => {
+    if (!p.productId || p.productId === 'undefined' || seen.has(p.productId)) return false;
+    seen.add(p.productId);
+    return true;
+  });
 }
+
+const MAX_VARIANTS = 5;
 
 function resultText(result) {
   return ((result && result.content) || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
@@ -175,33 +183,40 @@ function simplifyQuery(name) {
 
 // ---------- client ----------
 
-let toolCache = null;
+// Tool lists are cached per MCP client (= per request and household), never shared
+// between households.
+const toolCache = new WeakMap();
 
+const MCP_URL = 'https://mcp.rohlik.cz/mcp';
+const TIMEOUT_MS = 30000;
+
+/** Opens an MCP session with the household's own credentials. Never log them. */
 async function connect(email, pass) {
   const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
   const { StreamableHTTPClientTransport } = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
-  const transport = new StreamableHTTPClientTransport(new URL('https://mcp.rohlik.cz/mcp'), {
+  const transport = new StreamableHTTPClientTransport(new URL(MCP_URL), {
     requestInit: { headers: { 'rhl-email': email, 'rhl-pass': pass } },
   });
   const client = new Client({ name: 'cappymeal', version: '1.0.0' });
-  await client.connect(transport);
+  await client.connect(transport, { timeout: TIMEOUT_MS });
   return client;
 }
 
 async function listTools(client, { refresh = false } = {}) {
-  if (toolCache && !refresh) return toolCache;
-  const r = await client.listTools();
-  toolCache = r.tools || [];
-  return toolCache;
+  if (!refresh && toolCache.has(client)) return toolCache.get(client);
+  const r = await client.listTools(undefined, { timeout: TIMEOUT_MS });
+  const tools = r.tools || [];
+  toolCache.set(client, tools);
+  return tools;
 }
 
-async function searchProducts(client, query, max = 4) {
+async function searchProducts(client, query, max = MAX_VARIANTS) {
   const tools = await listTools(client);
   const tool = pickSearchTool(tools);
   if (!tool) throw new Error('Rohlík MCP: nenalezen nástroj pro vyhledávání produktů.');
   const res = await client.callTool({ name: tool.name, arguments: buildSearchArgs(tool, query) });
   if (res.isError) return [];
-  return parseProducts(res).slice(0, max);
+  return parseProducts(res).slice(0, Math.min(max, MAX_VARIANTS));
 }
 
 async function addToCart(client, products) {
@@ -229,5 +244,5 @@ async function addToCart(client, products) {
 
 module.exports = {
   pickSearchTool, pickAddTool, buildSearchArgs, buildAddCalls, parseProducts,
-  normaliseProduct, simplifyQuery, connect, listTools, searchProducts, addToCart,
+  normaliseProduct, simplifyQuery, MAX_VARIANTS, connect, listTools, searchProducts, addToCart,
 };

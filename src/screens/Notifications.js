@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { Icon, Spinner, Toast, Toggle } from '../components/ui';
 import { dayInfo, relativeTime } from '../lib/dates';
 import { enablePush, pushSupported } from '../services/push';
+import { removeMember, rotateJoinCode } from '../services/household';
+import RohlikAccount from '../components/RohlikAccount';
 import { capitalizeFirst, householdDisplayName, initial } from '../lib/text';
 import './notifications.css';
 
@@ -45,9 +47,12 @@ export default function Notifications() {
     joinCode,
     name,
     settings,
+    owner,
+    isOwner,
     updateSettings,
     updateHouseholdName,
   } = useHousehold();
+  const [ownerBusy, setOwnerBusy] = useState(null); // 'code' | member uid
   const [nameDraft, setNameDraft] = useState(capitalizeFirst(name));
   useEffect(() => setNameDraft(capitalizeFirst(name)), [name]);
   const [supported, setSupported] = useState(null);
@@ -142,6 +147,34 @@ export default function Notifications() {
   };
 
   const iosNeedsInstall = isIOS() && !isStandalone();
+
+  const newCode = async () => {
+    // eslint-disable-next-line no-alert
+    if (!window.confirm('Vygenerovat nový kód? Starý kód přestane platit.')) return;
+    setOwnerBusy('code');
+    try {
+      await rotateJoinCode();
+      setToast('Nový kód je připravený');
+    } catch (e) {
+      setToast(e.message || 'Kód se nepodařilo změnit');
+    } finally {
+      setOwnerBusy(null);
+    }
+  };
+
+  const kick = async (mid, nick) => {
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(`Odebrat ${capitalizeFirst(nick)} z domácnosti? Kód pro připojení se zároveň změní.`)) return;
+    setOwnerBusy(mid);
+    try {
+      await removeMember(mid);
+      setToast('Člen byl odebrán');
+    } catch (e) {
+      setToast(e.message || 'Člena se nepodařilo odebrat');
+    } finally {
+      setOwnerBusy(null);
+    }
+  };
 
   const saveName = async () => {
     const next = capitalizeFirst(nameDraft);
@@ -277,28 +310,49 @@ export default function Notifications() {
           <div className="stack">
             <h2 className="h-section">{householdDisplayName(name)}</h2>
             <div className="list-card">
-              <label className="list-row notif__name-row">
-                <div className="list-row__body">
-                  <div className="list-row__sub">Název domácnosti</div>
-                  <input
-                    className="notif__name-input"
-                    value={nameDraft}
-                    onChange={(e) => setNameDraft(e.target.value)}
-                    onBlur={saveName}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') e.currentTarget.blur();
-                    }}
-                    placeholder="např. Procházkovi"
-                    maxLength={40}
-                  />
+              {isOwner ? (
+                <label className="list-row notif__name-row">
+                  <div className="list-row__body">
+                    <div className="list-row__sub">Název domácnosti</div>
+                    <input
+                      className="notif__name-input"
+                      value={nameDraft}
+                      onChange={(e) => setNameDraft(e.target.value)}
+                      onBlur={saveName}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.currentTarget.blur();
+                      }}
+                      placeholder="např. Procházkovi"
+                      maxLength={40}
+                    />
+                  </div>
+                  <Icon name="edit" size={19} className="notif__name-icon" />
+                </label>
+              ) : (
+                <div className="list-row">
+                  <div className="list-row__body">
+                    <div className="list-row__sub">Název domácnosti</div>
+                    <div className="list-row__title">{householdDisplayName(name)}</div>
+                  </div>
                 </div>
-                <Icon name="edit" size={19} className="notif__name-icon" />
-              </label>
+              )}
               <div className="list-row">
                 <div className="list-row__body">
                   <div className="list-row__sub">Kód pro připojení</div>
                   <div className="notif__code">{joinCode || '—'}</div>
                 </div>
+                {isOwner && (
+                  <button
+                    type="button"
+                    className="icon-btn icon-btn--sm"
+                    onClick={newCode}
+                    disabled={!!ownerBusy}
+                    aria-label="Vygenerovat nový kód"
+                    title="Vygenerovat nový kód"
+                  >
+                    {ownerBusy === 'code' ? <Spinner small /> : <Icon name="autorenew" size={20} />}
+                  </button>
+                )}
                 {joinCode && (
                   <button
                     type="button"
@@ -318,12 +372,26 @@ export default function Notifications() {
                       {capitalizeFirst(m.nickname)}
                       {mid === uid ? ' (vy)' : ''}
                     </div>
-                    {m.joinedAt && (
+                    {(m.joinedAt || mid === owner) && (
                       <div className="list-row__sub">
-                        Členem od {new Date(m.joinedAt).toLocaleDateString('cs-CZ')}
+                        {mid === owner ? 'Zakladatel(ka)' : ''}
+                        {mid === owner && m.joinedAt ? ' · ' : ''}
+                        {m.joinedAt ? `Členem od ${new Date(m.joinedAt).toLocaleDateString('cs-CZ')}` : ''}
                       </div>
                     )}
                   </div>
+                  {isOwner && mid !== uid && mid !== owner && (
+                    <button
+                      type="button"
+                      className="icon-btn icon-btn--sm"
+                      onClick={() => kick(mid, m.nickname)}
+                      disabled={!!ownerBusy}
+                      aria-label={`Odebrat ${capitalizeFirst(m.nickname)}`}
+                      title="Odebrat z domácnosti"
+                    >
+                      {ownerBusy === mid ? <Spinner small /> : <Icon name="person_remove" size={20} />}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -333,6 +401,8 @@ export default function Notifications() {
               </div>
             )}
           </div>
+
+          <RohlikAccount onToast={setToast} />
 
           <button type="button" className="btn btn--ghost btn--sm only-mobile" onClick={logout}>
             <Icon name="logout" size={20} />

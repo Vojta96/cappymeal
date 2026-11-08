@@ -11,13 +11,15 @@ const ERRORS = {
   'auth/invalid-login-credentials': 'Přezdívka nebo heslo nejsou správné.',
   'auth/user-not-found': 'Přezdívka nebo heslo nejsou správné.',
   'auth/wrong-password': 'Přezdívka nebo heslo nejsou správné.',
-  'auth/weak-password': 'Heslo musí mít alespoň 6 znaků.',
+  'auth/weak-password': 'Heslo musí mít alespoň 10 znaků.',
   'auth/invalid-email': 'Přezdívka obsahuje nepovolené znaky.',
   'auth/too-many-requests': 'Příliš mnoho pokusů. Zkuste to za chvíli.',
   'auth/network-request-failed': 'Nejste připojeni k internetu.',
 };
 
-const NICK_RE = /^[a-zA-Z0-9._-]{3,30}$/;
+// Must match functions/src/validate.js (checked after lowercasing).
+const NICK_RE = /^[a-z0-9áčďéěíňóřšťúůýž._-]{3,24}$/;
+const NICK_HINT = '3–24 znaků: písmena (i s diakritikou), číslice, tečka, podtržítko nebo pomlčka.';
 
 export default function Login() {
   const { login, register } = useAuth();
@@ -38,12 +40,16 @@ export default function Login() {
       return;
     }
     if (isReg) {
-      if (!NICK_RE.test(nick)) {
-        setError('Přezdívka musí mít 3–30 znaků: písmena bez diakritiky, číslice, tečka, pomlčka.');
+      if (!NICK_RE.test(nick.toLowerCase())) {
+        setError(`Přezdívka musí mít ${NICK_HINT}`);
         return;
       }
-      if (password.length < 6) {
-        setError('Heslo musí mít alespoň 6 znaků.');
+      if (password.length < 10) {
+        setError('Heslo musí mít alespoň 10 znaků.');
+        return;
+      }
+      if (password.length > 128) {
+        setError('Heslo může mít nejvýše 128 znaků.');
         return;
       }
       if (password !== password2) {
@@ -56,7 +62,8 @@ export default function Login() {
       if (isReg) await register(nick, password);
       else await login(nick, password);
     } catch (err) {
-      setError(ERRORS[err.code] || 'Něco se pokazilo. Zkuste to znovu.');
+      // Callable errors (registration) carry a Czech message and a reason code.
+      setError(ERRORS[err.code] || (err.reason && err.message) || 'Něco se pokazilo. Zkuste to znovu.');
       setBusy(false);
     }
   };
@@ -89,7 +96,9 @@ export default function Login() {
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
+            maxLength={isReg ? 24 : 64}
           />
+          {isReg && <span className="field__hint">{NICK_HINT}</span>}
         </label>
         <label className="field">
           Heslo
@@ -99,7 +108,9 @@ export default function Login() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete={isReg ? 'new-password' : 'current-password'}
+            maxLength={128}
           />
+          {isReg && <span className="field__hint">Alespoň 10 znaků.</span>}
         </label>
         {isReg && (
           <label className="field">
@@ -110,6 +121,7 @@ export default function Login() {
               value={password2}
               onChange={(e) => setPassword2(e.target.value)}
               autoComplete="new-password"
+              maxLength={128}
             />
           </label>
         )}

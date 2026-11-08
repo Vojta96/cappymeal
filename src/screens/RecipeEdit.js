@@ -202,6 +202,7 @@ export default function RecipeEdit() {
                 value={draft.name}
                 onChange={(e) => setD({ name: e.target.value })}
                 placeholder="Např. Kuřecí curry"
+                maxLength={80}
               />
             </label>
             <input
@@ -237,6 +238,7 @@ export default function RecipeEdit() {
                 value={draft.preparation}
                 onChange={(e) => setD({ preparation: e.target.value })}
                 placeholder="Vaření, Pečení…"
+                maxLength={80}
               />
             </label>
           </div>
@@ -251,6 +253,7 @@ export default function RecipeEdit() {
                   onChange={(e) => setIng(i, { amount: e.target.value })}
                   placeholder="Množství"
                   aria-label="Množství"
+                  maxLength={40}
                 />
                 <input
                   className="input"
@@ -259,6 +262,7 @@ export default function RecipeEdit() {
                   onChange={(e) => setIng(i, { name: e.target.value })}
                   placeholder="Surovina"
                   aria-label="Surovina"
+                  maxLength={80}
                 />
                 <button
                   type="button"
@@ -273,6 +277,7 @@ export default function RecipeEdit() {
             <button
               type="button"
               className="edit__add-ing"
+              disabled={draft.ingredients.length >= 60}
               onClick={() => setD({ ingredients: [...draft.ingredients, { name: '', amount: '' }] })}
             >
               <Icon name="add" size={19} />
@@ -288,6 +293,7 @@ export default function RecipeEdit() {
               value={draft.instructions}
               onChange={(e) => setD({ instructions: e.target.value })}
               placeholder="Jak na to…"
+              maxLength={5000}
             />
           </label>
 

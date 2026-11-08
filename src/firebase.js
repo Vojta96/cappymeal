@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getDatabase } from 'firebase/database';
-import { getAuth } from 'firebase/auth';
+import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence } from 'firebase/auth';
+import { getFunctions } from 'firebase/functions';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyBusTSYtsoWGmC-akC76290cskdDlHV2y4',
@@ -14,4 +15,7 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app);
-export const auth = getAuth(app);
+// Only e-mail/password sign-in is used: no popup/redirect resolver, so the SDK never loads
+// the auth iframe or apis.google.com (keeps the Content-Security-Policy tight).
+export const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
+export const functions = getFunctions(app, 'europe-west1');

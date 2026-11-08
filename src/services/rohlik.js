@@ -1,31 +1,52 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { app } from '../firebase';
+// Client wrappers for the Rohlík Cloud Functions (per-household Rohlík account).
+import { callFunction } from './functions';
 
-const functions = getFunctions(app, 'europe-west1');
+const LONG = 300000;
+const MATCH_CHUNK = 60; // server cap per call
+const FILL_CHUNK = 80;
 
-function toError(e) {
-  const code = String((e && e.code) || '').replace('functions/', '');
-  if (code === 'failed-precondition') {
-    return new Error((e && e.message) || 'Rohlík není nastavený.');
-  }
-  if (['not-found', 'unavailable', 'internal', 'unknown', 'deadline-exceeded'].includes(code)) {
-    return new Error('Služba Rohlík zatím není nasazená nebo nedostupná.');
-  }
-  if (code === 'unauthenticated' || code === 'permission-denied' || code === 'invalid-argument') {
-    return new Error((e && e.message) || 'Požadavek se nepodařilo provést.');
-  }
-  return new Error((e && e.message) || 'Něco se nepovedlo.');
+export const NOT_CONNECTED = 'ROHLIK_NOT_CONNECTED';
+/** Errors after which the household has to (re)connect its Rohlík account in settings. */
+export const needsReconnect = (e) =>
+  !!e && ['ROHLIK_NOT_CONNECTED', 'ROHLIK_AUTH_FAILED', 'ROHLIK_CREDENTIALS_INVALID'].includes(e.reason);
+
+const chunks = (list, size) => {
+  const out = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+};
+
+/** Trims an item to the server's input caps. */
+export function matchItem({ key, name, amounts }) {
+  return {
+    key: String(key).slice(0, 120),
+    name: String(name).trim().slice(0, 100),
+    amounts: (amounts || []).slice(0, 10).map((a) => String(a).slice(0, 40)),
+  };
 }
 
-async function call(name, data) {
-  try {
-    const res = await httpsCallable(functions, name, { timeout: 300000 })(data);
-    return res.data;
-  } catch (e) {
-    throw toError(e);
+export const getRohlikStatus = () => callFunction('rohlikStatus', undefined, LONG);
+export const connectRohlik = (email, password) => callFunction('rohlikConnect', { email, password }, LONG);
+export const disconnectRohlik = () => callFunction('rohlikDisconnect');
+
+export async function matchProducts(items) {
+  const results = [];
+  for (const part of chunks(items.map(matchItem), MATCH_CHUNK)) {
+    // eslint-disable-next-line no-await-in-loop
+    const res = await callFunction('rohlikMatch', { items: part }, LONG);
+    results.push(...((res && res.results) || []));
   }
+  return { results };
 }
 
-export const getRohlikStatus = () => call('rohlikStatus');
-export const matchProducts = (items) => call('rohlikMatch', { items });
-export const fillCart = (days, products) => call('rohlikFillCart', { days, products });
+export async function fillCart(days, products) {
+  const out = { ok: true, added: 0, failed: [] };
+  for (const part of chunks(products, FILL_CHUNK)) {
+    // eslint-disable-next-line no-await-in-loop
+    const res = await callFunction('rohlikFillCart', { days, products: part }, LONG);
+    out.added += (res && res.added) || 0;
+    out.failed.push(...((res && res.failed) || []));
+    out.ok = out.ok && !!(res && res.ok);
+  }
+  return out;
+}

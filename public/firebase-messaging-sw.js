@@ -31,7 +31,14 @@ self.addEventListener('notificationclick', (event) => {
   const d = event.notification.data || {};
   const fcm = d.FCM_MSG && d.FCM_MSG.data;
   const link = d.link || (fcm && fcm.link) || '/';
-  const url = new URL(link, self.location.origin).href;
+  // Only ever navigate within this app (never to a URL supplied by a message from elsewhere).
+  let url = new URL('/', self.location.origin).href;
+  try {
+    const target = new URL(String(link), self.location.origin);
+    if (target.origin === self.location.origin) url = target.href;
+  } catch (e) {
+    // keep '/'
+  }
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
       for (const c of list) {

@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { createHousehold, joinHousehold } from '../services/household';
-import { normalizeJoinCode } from '../lib/joinCode';
+import { JOIN_CODE_RE, normalizeJoinCode } from '../lib/joinCode';
 import logo from '../Images/Cappy.png';
 import { Icon, Spinner } from '../components/ui';
 import AuthLayout from '../components/AuthLayout';
 import './auth.css';
 
 export default function Household() {
-  const { user, nickname, logout } = useAuth();
+  const { nickname, logout } = useAuth();
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(null); // 'create' | 'join'
@@ -21,8 +21,7 @@ export default function Household() {
       await fn();
       // AuthContext profile listener switches the app to the household automatically.
     } catch (e) {
-      const msg = e && e.code === 'PERMISSION_DENIED' ? 'Nemáte oprávnění. Zkontrolujte kód.' : e && e.message;
-      setError(msg || 'Něco se pokazilo. Zkuste to znovu.');
+      setError((e && e.message) || 'Něco se pokazilo. Zkuste to znovu.');
       setBusy(null);
     }
   };
@@ -49,7 +48,7 @@ export default function Household() {
             setError('Doplňte název domácnosti.');
             return;
           }
-          run('create', () => createHousehold(user.uid, nickname, name));
+          run('create', () => createHousehold(name));
         }}
       >
         <div className="hh-option__head">
@@ -83,7 +82,11 @@ export default function Household() {
         className="hh-option"
         onSubmit={(e) => {
           e.preventDefault();
-          run('join', () => joinHousehold(user.uid, nickname, code));
+          if (!JOIN_CODE_RE.test(code)) {
+            setError('Kód má 8 znaků (písmena a číslice).');
+            return;
+          }
+          run('join', () => joinHousehold(code));
         }}
       >
         <div className="hh-option__head">

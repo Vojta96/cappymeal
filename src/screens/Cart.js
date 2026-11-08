@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useHousehold } from '../context/HouseholdContext';
-import BottomSheet from '../components/BottomSheet';
+import RegularsSheet from '../components/RegularsSheet';
 import { Icon, Spinner, Toast } from '../components/ui';
 import { dayInfo, plural } from '../lib/dates';
 import {
@@ -9,12 +9,16 @@ import {
   aggregateIngredients,
   formatKc,
   isInPantry,
+  isRegularSelected,
   itemDetail,
+  regularItems,
   shoppingListText,
 } from '../lib/meals';
-import { fillCart, getRohlikStatus, matchProducts } from '../services/rohlik';
+import { fillCart, matchProducts, needsReconnect } from '../services/rohlik';
 import { useIsDesktop } from '../hooks/useMediaQuery';
 import './cart.css';
+
+const MAX_QTY = 50;
 
 async function copyText(text) {
   try {
@@ -37,17 +41,106 @@ async function copyText(text) {
   }
 }
 
-function ProductImg({ url }) {
+function ProductImg({ url, className = 'cart__pimg' }) {
   return (
-    <div className="cart__pimg">
+    <div className={className}>
       {url ? <img src={url} alt="" loading="lazy" /> : <Icon name="shopping_basket" size={22} />}
     </div>
   );
 }
 
+/** One shopping item with its Rohlík variants (up to 5) shown directly as cards. */
+function MatchedItem({ item, candidates, pick, busy, onPick }) {
+  const prod = !pick.skip && candidates[pick.idx];
+  return (
+    <div className={`cart__item${prod ? '' : ' cart__item--skip'}`}>
+      <div className="cart__item-head">
+        <div className="list-row__body">
+          <div className="list-row__title">
+            {item.name}
+            {item.regular && <span className="cart__reg-badge">pravidelná</span>}
+          </div>
+          {item.amounts.length > 0 && <div className="list-row__sub ellipsis">{item.amounts.join(' + ')}</div>}
+        </div>
+        {prod && (
+          <div className="stepper">
+            <button
+              type="button"
+              onClick={() => onPick({ qty: pick.qty - 1 })}
+              aria-label="Méně"
+              disabled={busy || pick.qty <= 1}
+            >
+              <Icon name="remove" size={18} />
+            </button>
+            <span>{pick.qty}</span>
+            <button
+              type="button"
+              onClick={() => onPick({ qty: pick.qty + 1 })}
+              aria-label="Více"
+              disabled={busy || pick.qty >= MAX_QTY}
+            >
+              <Icon name="add" size={18} />
+            </button>
+          </div>
+        )}
+      </div>
+      {candidates.length > 0 ? (
+        <div className="variants" role="radiogroup" aria-label={`Varianty – ${item.name}`}>
+          {candidates.map((c, i) => {
+            const on = !pick.skip && pick.idx === i;
+            return (
+              <button
+                type="button"
+                key={c.productId}
+                role="radio"
+                aria-checked={on}
+                className={`variant${on ? ' variant--on' : ''}`}
+                onClick={() => onPick({ idx: i, skip: false })}
+                disabled={busy}
+              >
+                {on && <Icon name="check_circle" size={20} className="variant__check" />}
+                <ProductImg url={c.imageUrl} className="variant__img" />
+                <div className="variant__name">{c.name}</div>
+                <div className="variant__meta">
+                  <span className="variant__price">{c.priceText || (c.price != null ? formatKc(c.price) : '')}</span>
+                  {c.unit && <span className="variant__unit">{c.unit}</span>}
+                </div>
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            role="radio"
+            aria-checked={!!pick.skip}
+            className={`variant variant--skip${pick.skip ? ' variant--on' : ''}`}
+            onClick={() => onPick({ skip: true })}
+            disabled={busy}
+          >
+            <Icon name="block" size={22} />
+            Přeskočit
+          </button>
+        </div>
+      ) : (
+        <div className="cart__none">Rohlík nenašel žádný vhodný produkt.</div>
+      )}
+    </div>
+  );
+}
+
 export default function Cart() {
-  const { horizon, todayKey, plan, recipes, pantry, pendingDays, statusOf, togglePantry, setOrderStatus } =
-    useHousehold();
+  const {
+    horizon,
+    todayKey,
+    plan,
+    recipes,
+    pantry,
+    regulars,
+    rohlik,
+    pendingDays,
+    statusOf,
+    togglePantry,
+    setOrderStatus,
+  } = useHousehold();
   const location = useLocation();
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
@@ -56,9 +149,9 @@ export default function Cart() {
   const [step, setStep] = useState('list'); // list | matching | matched | filling
   const [results, setResults] = useState({}); // key -> candidates[]
   const [picks, setPicks] = useState({}); // key -> { idx, qty, skip }
-  const [error, setError] = useState('');
-  const [notConfigured, setNotConfigured] = useState(false);
-  const [pickSheet, setPickSheet] = useState(null); // item key
+  const [error, setError] = useState(null); // CallError | Error | null
+  const [regSel, setRegSel] = useState({}); // regular id -> bool (this shopping only)
+  const [regSheet, setRegSheet] = useState(null); // 'add' | 'manage' | null
   const [toast, setToast] = useState('');
   const clearToast = useCallback(() => setToast(''), []);
 
@@ -67,18 +160,8 @@ export default function Cart() {
     if (location.state && location.state.days) setDaysSel(location.state.days);
   }, [location.key, location.state]);
 
-  // Warm up the function and learn early whether Rohlík is configured.
-  useEffect(() => {
-    let alive = true;
-    getRohlikStatus()
-      .then((s) => {
-        if (alive && s && s.configured === false) setNotConfigured(true);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const connected = !!(rohlik && rohlik.connected);
+  const mustConnect = !connected || needsReconnect(error);
 
   const days = useMemo(
     () => (daysSel || pendingDays).filter((k) => horizon.includes(k)).sort(),
@@ -94,14 +177,21 @@ export default function Cart() {
   }, [days, horizon, statusOf]);
 
   const all = useMemo(() => aggregateIngredients(days, plan, recipes), [days, plan, recipes]);
-  const buy = all.filter((it) => !isInPantry(it, pantry));
+  const allRegulars = useMemo(() => regularItems(regulars, regSel, { onlySelected: false }), [regulars, regSel]);
+  const chosenRegulars = useMemo(() => allRegulars.filter((r) => isRegularSelected(r.id, r, regSel)), [
+    allRegulars,
+    regSel,
+  ]);
+  const buyIngredients = all.filter((it) => !isInPantry(it, pantry));
   const home = all.filter((it) => isInPantry(it, pantry));
+  // Regulars are never auto-marked as "Mám doma"; they go first.
+  const buy = [...chosenRegulars, ...buyIngredients];
 
   const resetMatch = () => {
     setStep('list');
     setResults({});
     setPicks({});
-    setError('');
+    setError(null);
   };
 
   const toggleDay = (k) => {
@@ -110,15 +200,20 @@ export default function Cart() {
     resetMatch();
   };
 
+  const toggleRegular = (r) => {
+    setRegSel((s) => ({ ...s, [r.id]: !isRegularSelected(r.id, r, s) }));
+    if (step !== 'list') resetMatch();
+  };
+
   const findOnRohlik = async () => {
-    setError('');
+    setError(null);
     setStep('matching');
     try {
       const res = await matchProducts(buy.map((it) => ({ key: it.key, name: it.name, amounts: it.amounts })));
       const map = {};
       const p = {};
       ((res && res.results) || []).forEach((r) => {
-        map[r.key] = r.candidates || [];
+        map[r.key] = (r.candidates || []).slice(0, 5);
       });
       buy.forEach((it) => {
         const c = map[it.key] || [];
@@ -128,7 +223,7 @@ export default function Cart() {
       setPicks(p);
       setStep('matched');
     } catch (e) {
-      setError(e.message || 'Rohlík teď neodpovídá.');
+      setError(e);
       setStep('list');
     }
   };
@@ -144,12 +239,12 @@ export default function Cart() {
   const total = chosen.reduce((a, x) => a + (Number(x.product.price) || 0) * x.qty, 0);
 
   const toCart = async () => {
-    setError('');
+    setError(null);
     setStep('filling');
     try {
       const res = await fillCart(
         days,
-        chosen.map((x) => ({ productId: x.product.productId, quantity: x.qty })),
+        chosen.map((x) => ({ productId: String(x.product.productId), quantity: x.qty })),
       );
       if (!res || (!res.ok && !res.added)) {
         throw new Error('Do košíku se nepodařilo nic vložit.');
@@ -163,7 +258,7 @@ export default function Cart() {
         },
       });
     } catch (e) {
-      setError(e.message || 'Rohlík teď neodpovídá.');
+      setError(e);
       setStep('matched');
     }
   };
@@ -178,10 +273,14 @@ export default function Cart() {
     navigate('/', { replace: true });
   };
 
-  const setPick = (key, patch) => setPicks((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
+  const setPick = (key, patch) =>
+    setPicks((p) => {
+      const next = { ...p[key], ...patch };
+      if (next.qty !== undefined) next.qty = Math.max(1, Math.min(MAX_QTY, next.qty));
+      return { ...p, [key]: next };
+    });
 
-  const showFallback = !!error || notConfigured;
-  const sheetItem = pickSheet ? buy.find((it) => it.key === pickSheet) : null;
+  const errorText = error ? error.message || 'Rohlík teď neodpovídá.' : '';
 
   // ---------- render ----------
   const header = (
@@ -194,6 +293,8 @@ export default function Cart() {
       </div>
     </div>
   );
+
+  const regSheetEl = <RegularsSheet open={!!regSheet} mode={regSheet || 'add'} onClose={() => setRegSheet(null)} />;
 
   if (chipDays.length === 0) {
     return (
@@ -211,21 +312,129 @@ export default function Cart() {
     );
   }
 
-  const busyStep = step === 'matching' || step === 'filling';
+  const busy = step === 'matching' || step === 'filling';
+
+  const connectCard = (
+    <div className="cart__fallback">
+      <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
+        <div className="alert-card__icon" style={{ background: 'var(--alert-icon-bg)' }}>
+          <Icon name="link_off" size={21} />
+        </div>
+        <div className="stack" style={{ gap: 3 }}>
+          <div className="cart__fallback-title">
+            {connected ? 'Účet Rohlík je potřeba připojit znovu' : 'Připojte účet Rohlík'}
+          </div>
+          <div className="cart__fallback-text">
+            {connected && errorText ? `${errorText} ` : ''}
+            Aby šel nákup vložit rovnou do košíku, připojte v Nastavení účet Rohlík vaší domácnosti. Mezitím si
+            seznam můžete zkopírovat a objednat ručně.
+          </div>
+        </div>
+      </div>
+      <div className="cart__fallback-actions">
+        <button type="button" className="btn btn--sm" onClick={() => navigate('/notifications')}>
+          <Icon name="settings" size={19} />
+          Otevřít nastavení
+        </button>
+        <button type="button" className="btn btn--sm btn--ghost" onClick={copyList}>
+          <Icon name="content_copy" size={19} />
+          Zkopírovat seznam
+        </button>
+        <button type="button" className="btn btn--sm btn--ghost" onClick={markOrdered}>
+          <Icon name="task_alt" size={19} />
+          Označit jako objednané
+        </button>
+      </div>
+    </div>
+  );
+
+  const errorCard = (
+    <div className="cart__fallback">
+      <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
+        <div className="alert-card__icon" style={{ background: 'var(--alert-icon-bg)' }}>
+          <Icon name="cloud_off" size={21} />
+        </div>
+        <div className="stack" style={{ gap: 3 }}>
+          <div className="cart__fallback-title">Rohlík teď nespolupracuje</div>
+          <div className="cart__fallback-text">
+            {errorText} Seznam si můžete zkopírovat a objednat ručně v aplikaci Rohlík.
+          </div>
+        </div>
+      </div>
+      <div className="cart__fallback-actions">
+        <button type="button" className="btn btn--sm" onClick={copyList}>
+          <Icon name="content_copy" size={19} />
+          Zkopírovat seznam
+        </button>
+        <button type="button" className="btn btn--sm btn--ghost" onClick={markOrdered}>
+          <Icon name="task_alt" size={19} />
+          Označit jako objednané
+        </button>
+      </div>
+    </div>
+  );
+
+  const regularsSection = (
+    <div className="stack cart__regs">
+      <div className="row--between" style={{ alignItems: 'baseline' }}>
+        <h2 className="h-section">Pravidelné položky</h2>
+        {allRegulars.length > 0 && (
+          <button type="button" className="link-btn" onClick={() => setRegSheet('manage')} disabled={busy}>
+            Upravit
+          </button>
+        )}
+      </div>
+      <div className="chips">
+        {allRegulars.map((r) => {
+          const on = isRegularSelected(r.id, r, regSel);
+          return (
+            <button
+              type="button"
+              key={r.id}
+              className={`chip${on ? ' chip--on' : ''}`}
+              style={{ height: 38, padding: '0 13px 0 9px' }}
+              onClick={() => toggleRegular(r)}
+              aria-pressed={on}
+              disabled={busy}
+            >
+              <Icon name={on ? 'check_circle' : 'radio_button_unchecked'} />
+              {r.name}
+              {r.amounts.length > 0 && <span className="cart__incart">{r.amounts[0]}</span>}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          className="chip cart__reg-add"
+          style={{ height: 38, padding: '0 13px 0 9px' }}
+          onClick={() => setRegSheet('add')}
+          disabled={busy}
+        >
+          <Icon name="add" />
+          Přidat položku
+        </button>
+      </div>
+      {allRegulars.length === 0 && (
+        <div className="cart__regs-hint">Káva, mléko, toaletní papír… Přidejte věci, které kupujete pořád.</div>
+      )}
+    </div>
+  );
+
   // Desktop right column (design2 "Doručení" card, adapted to the real Rohlík flow).
   const panel = (
     <aside className="cart__panel">
       <div className="h-section">Košík na Rohlíku</div>
       {step === 'list' &&
-        (notConfigured ? (
+        (mustConnect ? (
           <div className="cart__panel-text">
-            Propojení s Rohlíkem není nastavené. Seznam si zkopírujte a objednejte v aplikaci Rohlík.
+            Účet Rohlík není připojený. Připojte ho v Nastavení, nebo si seznam zkopírujte a objednejte ručně.
           </div>
         ) : (
           <>
             <div className="cart__panel-text">
               Najdeme na Rohlíku produkty pro {buy.length}{' '}
-              {plural(buy.length, 'položku', 'položky', 'položek')}. Pak je zkontrolujete a pošlete do košíku.
+              {plural(buy.length, 'položku', 'položky', 'položek')}. U každé vyberete z několika variant a pošlete
+              do košíku.
             </div>
             <button
               type="button"
@@ -264,7 +473,7 @@ export default function Cart() {
             type="button"
             className="btn btn--dark cart__panel-btn"
             onClick={toCart}
-            disabled={busyStep || chosen.length === 0}
+            disabled={busy || chosen.length === 0}
           >
             {step === 'filling' ? <Spinner small /> : <Icon name="local_shipping" />}
             {step === 'filling' ? 'Vkládám do košíku…' : 'Vložit do košíku na Rohlíku'}
@@ -277,7 +486,7 @@ export default function Cart() {
     </aside>
   );
 
-  const busy = busyStep;
+  const nothingToBuy = days.length === 0 || (all.length === 0 && chosenRegulars.length === 0);
 
   return (
     <div className="screen screen--fill" style={{ gap: 18 }}>
@@ -308,51 +517,28 @@ export default function Cart() {
         </div>
       </div>
 
-      {days.length === 0 || all.length === 0 ? (
-        <div className="empty-card">
-          <Icon name="event_busy" size={40} style={{ color: 'var(--muted-3)' }} />
-          <div className="empty-card__title">{days.length ? 'Žádné suroviny' : 'Vyberte dny'}</div>
-          <div className="empty-card__text">
-            {days.length
-              ? 'Vybrané dny nemají naplánovaná jídla se surovinami.'
-              : 'Zvolte, na které dny chcete nakoupit.'}
+      {nothingToBuy ? (
+        <>
+          {days.length > 0 && regularsSection}
+          <div className="empty-card">
+            <Icon name="event_busy" size={40} style={{ color: 'var(--muted-3)' }} />
+            <div className="empty-card__title">{days.length ? 'Žádné suroviny' : 'Vyberte dny'}</div>
+            <div className="empty-card__text">
+              {days.length
+                ? 'Vybrané dny nemají naplánovaná jídla se surovinami.'
+                : 'Zvolte, na které dny chcete nakoupit.'}
+            </div>
           </div>
-        </div>
+        </>
       ) : (
         <>
-          {showFallback && (
-            <div className="cart__fallback">
-              <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
-                <div className="alert-card__icon" style={{ background: 'var(--alert-icon-bg)' }}>
-                  <Icon name="cloud_off" size={21} />
-                </div>
-                <div className="stack" style={{ gap: 3 }}>
-                  <div className="cart__fallback-title">
-                    {notConfigured && !error ? 'Rohlík zatím není propojený' : 'Rohlík teď nespolupracuje'}
-                  </div>
-                  <div className="cart__fallback-text">
-                    {error || 'Propojení s Rohlíkem ještě není nastavené.'} Seznam si můžete zkopírovat a
-                    objednat ručně v aplikaci Rohlík.
-                  </div>
-                </div>
-              </div>
-              <div className="cart__fallback-actions">
-                <button type="button" className="btn btn--sm" onClick={copyList}>
-                  <Icon name="content_copy" size={19} />
-                  Zkopírovat seznam
-                </button>
-                <button type="button" className="btn btn--sm btn--ghost" onClick={markOrdered}>
-                  <Icon name="task_alt" size={19} />
-                  Označit jako objednané
-                </button>
-              </div>
-            </div>
-          )}
+          {mustConnect ? connectCard : error ? errorCard : null}
 
           <div className="cart__cols">
             <div className="cart__left">
               {step === 'list' && (
                 <>
+                  {regularsSection}
                   <div className="stack">
                     <div className="row--between" style={{ alignItems: 'baseline' }}>
                       <h2 className="h-section">Do košíku</h2>
@@ -365,16 +551,25 @@ export default function Cart() {
                         {buy.map((it) => (
                           <div key={it.key} className="list-row" style={{ gap: 12 }}>
                             <div className="list-row__body">
-                              <div className="list-row__title">{it.name}</div>
+                              <div className="list-row__title">
+                                {it.name}
+                                {it.regular && <span className="cart__reg-badge">pravidelná</span>}
+                              </div>
                               <div className="list-row__sub ellipsis">{itemDetail(it)}</div>
                             </div>
-                            <button
-                              type="button"
-                              className="cart__home-btn"
-                              onClick={() => togglePantry(it.key, true)}
-                            >
-                              Mám doma
-                            </button>
+                            {it.regular ? (
+                              <button type="button" className="cart__home-btn" onClick={() => toggleRegular(it)}>
+                                Tentokrát ne
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="cart__home-btn"
+                                onClick={() => togglePantry(it.key, true)}
+                              >
+                                Mám doma
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -405,7 +600,7 @@ export default function Cart() {
                       </div>
                     </div>
                   )}
-                  {!isDesktop && !notConfigured && buy.length > 0 && (
+                  {!isDesktop && !mustConnect && buy.length > 0 && (
                     <div className="sticky-action">
                       <button type="button" className="btn btn--dark" onClick={findOnRohlik}>
                         <Icon name="travel_explore" />
@@ -438,72 +633,22 @@ export default function Cart() {
                 <>
                   <div className="stack">
                     <div className="row--between" style={{ alignItems: 'baseline' }}>
-                      <h2 className="h-section">Košík na Rohlíku</h2>
+                      <h2 className="h-section">Vyberte produkty</h2>
                       <button type="button" className="link-btn" onClick={resetMatch} disabled={busy}>
                         Upravit seznam
                       </button>
                     </div>
-                    <div className="list-card" style={{ padding: '4px 14px' }}>
-                      {buy.map((it) => {
-                        const pk = picks[it.key] || { idx: 0, qty: 1, skip: true };
-                        const c = results[it.key] || [];
-                        const prod = !pk.skip && c[pk.idx];
-                        return (
-                          <div
-                            key={it.key}
-                            className={`list-row cart__match${prod ? '' : ' cart__match--skip'}`}
-                          >
-                            <button
-                              type="button"
-                              className="cart__match-main"
-                              onClick={() => setPickSheet(it.key)}
-                              disabled={busy}
-                            >
-                              <ProductImg url={prod && prod.imageUrl} />
-                              <div className="list-row__body">
-                                <div className="cart__for">
-                                  {it.name}
-                                  {it.amounts.length > 0 && ` · ${it.amounts.join(' + ')}`}
-                                </div>
-                                <div className="list-row__title cart__pname">
-                                  {prod ? prod.name : c.length ? 'Přeskočeno' : 'Nenalezeno'}
-                                </div>
-                                {prod && (
-                                  <div className="cart__price">
-                                    {prod.priceText || formatKc(prod.price)}
-                                    {prod.unit ? <span> · {prod.unit}</span> : null}
-                                  </div>
-                                )}
-                              </div>
-                            </button>
-                            {prod && (
-                              <div className="stepper">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    pk.qty <= 1
-                                      ? setPick(it.key, { skip: true })
-                                      : setPick(it.key, { qty: pk.qty - 1 })
-                                  }
-                                  aria-label="Méně"
-                                  disabled={busy}
-                                >
-                                  <Icon name={pk.qty <= 1 ? 'delete' : 'remove'} size={18} />
-                                </button>
-                                <span>{pk.qty}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => setPick(it.key, { qty: pk.qty + 1 })}
-                                  aria-label="Více"
-                                  disabled={busy}
-                                >
-                                  <Icon name="add" size={18} />
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                    <div className="list-card cart__matched">
+                      {buy.map((it) => (
+                        <MatchedItem
+                          key={it.key}
+                          item={it}
+                          candidates={results[it.key] || []}
+                          pick={picks[it.key] || { idx: 0, qty: 1, skip: true }}
+                          busy={busy}
+                          onPick={(patch) => setPick(it.key, patch)}
+                        />
+                      ))}
                     </div>
                   </div>
                   {!isDesktop && total > 0 && total < MIN_ORDER_KC && (
@@ -536,57 +681,7 @@ export default function Cart() {
         </>
       )}
 
-      <BottomSheet
-        open={!!sheetItem}
-        onClose={() => setPickSheet(null)}
-        title={sheetItem ? sheetItem.name : ''}
-        sub={sheetItem ? itemDetail(sheetItem) : ''}
-      >
-        {sheetItem &&
-          (results[sheetItem.key] || []).map((c, i) => {
-            const on = !picks[sheetItem.key].skip && picks[sheetItem.key].idx === i;
-            return (
-              <button
-                type="button"
-                key={c.productId}
-                className={`sheet-item${on ? ' sheet-item--on' : ''}`}
-                onClick={() => {
-                  setPick(sheetItem.key, { idx: i, skip: false });
-                  setPickSheet(null);
-                }}
-              >
-                <ProductImg url={c.imageUrl} />
-                <div className="list-row__body">
-                  <div className="list-row__title">{c.name}</div>
-                  <div className="list-row__sub">
-                    {c.priceText || formatKc(c.price)}
-                    {c.unit ? ` · ${c.unit}` : ''}
-                  </div>
-                </div>
-                <Icon name={on ? 'check_circle' : 'radio_button_unchecked'} className="sheet-item__add" />
-              </button>
-            );
-          })}
-        {sheetItem && (results[sheetItem.key] || []).length === 0 && (
-          <div className="muted" style={{ textAlign: 'center', padding: '16px 0', fontSize: 14 }}>
-            Rohlík nenašel žádný vhodný produkt.
-          </div>
-        )}
-        {sheetItem && (
-          <button
-            type="button"
-            className="btn btn--ghost btn--sm"
-            style={{ marginTop: 6 }}
-            onClick={() => {
-              setPick(sheetItem.key, { skip: true });
-              setPickSheet(null);
-            }}
-          >
-            Přeskočit
-          </button>
-        )}
-      </BottomSheet>
-
+      {regSheetEl}
       <Toast text={toast} onDone={clearToast} />
     </div>
   );

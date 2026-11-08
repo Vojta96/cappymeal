@@ -1,19 +1,30 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-} from 'firebase/auth';
-import { ref, onValue, set, get, update } from 'firebase/database';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
+import { ref, onValue } from 'firebase/database';
 import { auth, db } from '../firebase';
 import { capitalizeFirst } from '../lib/text';
+import { callFunction } from '../services/functions';
 
 export const AuthContext = createContext(null);
 
+// Login e-mails live on a subdomain of the Firebase-controlled domain (nobody can receive
+// mail there). Accounts created before the switch used @cappymeal.app and are migrated
+// on their next login / app start.
+export const LOGIN_DOMAIN = 'users.cappymeal-go.firebaseapp.com';
+export const LEGACY_DOMAIN = 'cappymeal.app';
 export const normalizeNickname = (nickname) => nickname.trim().toLowerCase();
-const toEmail = (nickname) => `${normalizeNickname(nickname)}@cappymeal.app`;
+export const toEmail = (nickname) => `${normalizeNickname(nickname)}@${LOGIN_DOMAIN}`;
+const toLegacyEmail = (nickname) => `${normalizeNickname(nickname)}@${LEGACY_DOMAIN}`;
+const isLegacy = (u) => !!(u && u.email && u.email.toLowerCase().endsWith(`@${LEGACY_DOMAIN}`));
 const nicknameFromUser = (u) => (u && u.email ? u.email.split('@')[0] : '');
+
+const CREDENTIAL_ERRORS = [
+  'auth/invalid-credential',
+  'auth/invalid-login-credentials',
+  'auth/user-not-found',
+  'auth/wrong-password',
+  'auth/invalid-email',
+];
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -21,6 +32,7 @@ export function AuthProvider({ children }) {
   // users/{uid}: { nickname, householdId }
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const migrating = useRef(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -48,34 +60,44 @@ export function AuthProvider({ children }) {
     return () => unsub();
   }, [user]);
 
+  // Sessions that are still signed in with a legacy e-mail get migrated in the background.
+  useEffect(() => {
+    if (!isLegacy(user) || migrating.current) return;
+    migrating.current = true;
+    callFunction('migrateLoginEmail', {})
+      .then((r) => (r && r.migrated ? user.reload().then(() => user.getIdToken(true)) : null))
+      .catch(() => {
+        // non-fatal – the account keeps working with the old e-mail and retries next time
+      });
+  }, [user]);
+
   const register = useCallback(async (nickname, password) => {
-    const cred = await createUserWithEmailAndPassword(auth, toEmail(nickname), password);
-    await set(ref(db, `users/${cred.user.uid}`), {
-      nickname: capitalizeFirst(nickname),
-      householdId: null,
-    });
-    return cred;
+    await callFunction('registerAccount', { nickname: nickname.trim(), password });
+    return signInWithEmailAndPassword(auth, toEmail(nickname), password);
   }, []);
 
   const login = useCallback(async (nickname, password) => {
-    const cred = await signInWithEmailAndPassword(auth, toEmail(nickname), password);
-    // Older accounts stored no nickname or the lowercase email-derived one ("vojta").
-    // Save the nickname as typed, capitalized, to the profile and household membership.
     try {
-      const uid = cred.user.uid;
-      const snap = await get(ref(db, `users/${uid}`));
-      const prof = snap.val() || {};
-      const stored = prof.nickname;
-      const display = capitalizeFirst(nickname);
-      if (display && (!stored || stored === normalizeNickname(nickname)) && stored !== display) {
-        const updates = { [`users/${uid}/nickname`]: display };
-        if (prof.householdId) updates[`households/${prof.householdId}/members/${uid}/nickname`] = display;
-        await update(ref(db), updates);
-      }
+      return await signInWithEmailAndPassword(auth, toEmail(nickname), password);
     } catch (e) {
-      // non-fatal – login already succeeded
+      if (!CREDENTIAL_ERRORS.includes(e && e.code)) throw e;
+      // Account from before the domain switch?
+      let legacy;
+      try {
+        migrating.current = true;
+        legacy = await signInWithEmailAndPassword(auth, toLegacyEmail(nickname), password);
+      } catch (e2) {
+        migrating.current = false;
+        throw CREDENTIAL_ERRORS.includes(e2 && e2.code) ? e : e2;
+      }
+      try {
+        const r = await callFunction('migrateLoginEmail', { nickname: capitalizeFirst(nickname) });
+        if (r && r.migrated) return await signInWithEmailAndPassword(auth, toEmail(nickname), password);
+      } catch (e3) {
+        // non-fatal – stays signed in with the legacy e-mail
+      }
+      return legacy;
     }
-    return cred;
   }, []);
 
   const logout = useCallback(() => signOut(auth), []);

@@ -1,6 +1,6 @@
 // Smoke tests: every screen renders with a fake household (no real Firebase).
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { HouseholdContext } from '../context/HouseholdContext';
@@ -21,9 +21,22 @@ import AppLayout from '../components/AppLayout';
 jest.mock('../firebase', () => ({ app: {}, db: {}, auth: {} }));
 jest.mock('firebase/database', () => ({}));
 jest.mock('firebase/auth', () => ({}));
+jest.mock('firebase/functions', () => ({}));
+const mockCandidates = [1, 2, 3].map((n) => ({
+  productId: String(n),
+  name: `Špagety varianta ${n}`,
+  price: 30 + n,
+  priceText: `${30 + n} Kč`,
+  unit: '500 g',
+  imageUrl: null,
+}));
 jest.mock('../services/rohlik', () => ({
-  getRohlikStatus: () => Promise.resolve({ configured: true, tools: [] }),
-  matchProducts: () => Promise.resolve({ results: [] }),
+  getRohlikStatus: () => Promise.resolve({ connected: true, toolCount: 0 }),
+  connectRohlik: () => Promise.resolve({ connected: true }),
+  disconnectRohlik: () => Promise.resolve({ connected: false }),
+  needsReconnect: () => false,
+  matchProducts: (items) =>
+    Promise.resolve({ results: items.map((it) => ({ key: it.key, candidates: mockCandidates })) }),
   fillCart: () => Promise.resolve({ ok: true, added: 0, failed: [] }),
 }));
 // Plain functions (not jest.fn) – CRA's resetMocks would wipe jest.fn implementations.
@@ -32,7 +45,12 @@ jest.mock('../services/push', () => ({
   enablePush: () => Promise.resolve('unsupported'),
   onForegroundMessage: () => () => {},
 }));
-jest.mock('../services/household', () => ({ DEFAULT_SETTINGS: {} }));
+jest.mock('../services/household', () => ({
+  DEFAULT_SETTINGS: {},
+  ensureHouseholdMeta: () => Promise.resolve({}),
+  rotateJoinCode: () => Promise.resolve({ code: 'ZZZZ2345' }),
+  removeMember: () => Promise.resolve({ ok: true }),
+}));
 
 const today = dateKey();
 const horizon = horizonKeys(today);
@@ -66,7 +84,14 @@ const household = {
   plan,
   orders,
   pantry: {},
-  members: { u1: { nickname: 'vojta', joinedAt: 1 } },
+  members: { u1: { nickname: 'vojta', joinedAt: 1 }, u2: { nickname: 'jana', joinedAt: 2 } },
+  owner: 'u1',
+  isOwner: true,
+  rohlik: { connected: true, emailMasked: 'v***@gmail.com', connectedAt: 1, by: 'u1' },
+  regulars: {
+    k1: { name: 'Káva', amount: '1 balení', auto: true },
+    k2: { name: 'Toaletní papír', auto: false },
+  },
   settings: { remind3d: true, remindDaily: true, remindBoth: true, remindHour: 9 },
   joinCode: 'ABCD2345',
   name: 'procházkovi',
@@ -85,13 +110,16 @@ const household = {
   clearOrder: noop,
   updateSettings: noop,
   logActivity: noop,
+  addRegular: noop,
+  updateRegular: noop,
+  deleteRegular: noop,
 };
 const auth = { user: { uid: 'u1' }, nickname: 'vojta', login: noop, register: noop, logout: noop };
 
-function renderAt(path, element, routePath = path) {
+function renderAt(path, element, routePath = path, hh = household) {
   return render(
     <AuthContext.Provider value={auth}>
-      <HouseholdContext.Provider value={household}>
+      <HouseholdContext.Provider value={hh}>
         <BannerProvider>
           <MemoryRouter initialEntries={[path]}>
             <Routes>
@@ -145,6 +173,35 @@ test('Nákup', () => {
   expect(screen.getByText('Najít na Rohlíku')).toBeInTheDocument();
   expect(screen.getByText('Špagety')).toBeInTheDocument();
   expect(screen.getByText('Máme doma · 1')).toBeInTheDocument();
+  // regulars: "auto" one is preselected and joins the list, the other is only a chip
+  expect(screen.getByText('Pravidelné položky')).toBeInTheDocument();
+  expect(screen.getAllByText('Káva')).toHaveLength(2);
+  expect(screen.getAllByText('Toaletní papír')).toHaveLength(1);
+  fireEvent.click(screen.getByText('Toaletní papír'));
+  expect(screen.getAllByText('Toaletní papír')).toHaveLength(2);
+});
+
+test('Nákup – varianty produktů', async () => {
+  renderAt('/cart', <Cart />);
+  fireEvent.click(screen.getByText('Najít na Rohlíku'));
+  expect(await screen.findByText('Vyberte produkty')).toBeInTheDocument();
+  const groups = screen.getAllByRole('radiogroup');
+  expect(groups.length).toBe(3); // Káva + Mléko + Špagety
+  const radios = within(groups[0]).getAllByRole('radio');
+  expect(radios).toHaveLength(4); // 3 variants + Přeskočit
+  expect(radios[0]).toHaveAttribute('aria-checked', 'true');
+  fireEvent.click(radios[2]);
+  expect(radios[2]).toHaveAttribute('aria-checked', 'true');
+  expect(radios[0]).toHaveAttribute('aria-checked', 'false');
+  fireEvent.click(radios[3]);
+  expect(radios[3]).toHaveAttribute('aria-checked', 'true');
+});
+
+test('Nákup – Rohlík nepřipojený', () => {
+  renderAt('/cart', <Cart />, '/cart', { ...household, rohlik: null });
+  expect(screen.getByText('Připojte účet Rohlík')).toBeInTheDocument();
+  expect(screen.getByText('Otevřít nastavení')).toBeInTheDocument();
+  expect(screen.queryByText('Najít na Rohlíku')).toBeNull();
 });
 
 test('Hotovo', () => {
@@ -157,6 +214,24 @@ test('Upozornění', async () => {
   expect(await screen.findByText('Tento prohlížeč upozornění nepodporuje.', { exact: false })).toBeInTheDocument();
   expect(screen.getByText('ABCD2345')).toBeInTheDocument();
   expect(screen.getByText('Jana přidal(a) oběd')).toBeInTheDocument();
+  expect(screen.getByText('Účet Rohlík')).toBeInTheDocument();
+  expect(screen.getByText('v***@gmail.com')).toBeInTheDocument();
+  expect(screen.getByText('Odpojit')).toBeInTheDocument();
+  expect(screen.getByLabelText('Odebrat Jana')).toBeInTheDocument();
+  expect(screen.getByLabelText('Vygenerovat nový kód')).toBeInTheDocument();
+});
+
+test('Upozornění – člen bez vlastnictví', () => {
+  renderAt('/notifications', <Notifications />, '/notifications', {
+    ...household,
+    isOwner: false,
+    owner: 'u2',
+    rohlik: null,
+  });
+  expect(screen.getByText('Nepřipojeno')).toBeInTheDocument();
+  expect(screen.queryByText('Připojit')).toBeNull();
+  expect(screen.queryByLabelText('Odebrat Jana')).toBeNull();
+  expect(screen.queryByLabelText('Vygenerovat nový kód')).toBeNull();
 });
 
 test('Přihlášení / registrace', () => {
@@ -201,7 +276,7 @@ describe('desktop layout (>= 1024px)', () => {
     expect(container.querySelector('.sidebar')).not.toBeNull();
     expect(container.querySelector('.tabbar')).toBeNull();
     expect(screen.getByText('Procházkovi')).toBeInTheDocument();
-    expect(screen.getByText('1 člen')).toBeInTheDocument();
+    expect(screen.getByText('2 členové')).toBeInTheDocument();
     expect(screen.getByText('Upozornění')).toBeInTheDocument();
     expect(screen.getByText('Obsah')).toBeInTheDocument();
   });

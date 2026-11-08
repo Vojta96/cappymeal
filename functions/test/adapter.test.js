@@ -51,3 +51,29 @@ test('simplifyQuery', () => {
   assert.strictEqual(a.simplifyQuery('máslo nebo margarín'), 'máslo');
   assert.strictEqual(a.simplifyQuery('mouka hladká, 200 g'), 'mouka hladká');
 });
+
+test('variants: deduped by productId, best-first, max 5', async () => {
+  const items = [1, 2, 2, 3, 4, 5, 6, 7].map((n) => ({ productId: n, name: `P${n}`, price: n }));
+  const res = { content: [{ type: 'text', text: JSON.stringify({ products: items }) }] };
+  assert.deepStrictEqual(a.parseProducts(res).map((p) => p.productId), ['1', '2', '3', '4', '5', '6', '7']);
+  let args;
+  const client = {
+    listTools: async () => ({ tools }),
+    callTool: async (c) => { args = c.arguments; return res; },
+  };
+  const out = await a.searchProducts(client, 'mléko');
+  assert.deepStrictEqual(out.map((p) => p.productId), ['1', '2', '3', '4', '5']);
+  assert.deepStrictEqual(args, { keyword: 'mléko', limit: 8 });
+  assert.strictEqual((await a.searchProducts(client, 'mléko', 3)).length, 3);
+});
+
+test('tool list cache is per client', async () => {
+  let calls = 0;
+  const mk = () => ({ listTools: async () => { calls += 1; return { tools }; } });
+  const c1 = mk();
+  const c2 = mk();
+  await a.listTools(c1);
+  await a.listTools(c1);
+  await a.listTools(c2);
+  assert.strictEqual(calls, 2);
+});

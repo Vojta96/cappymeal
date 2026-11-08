@@ -22,12 +22,19 @@ import { db } from '../firebase';
 import { useAuth } from './AuthContext';
 import { dateKey, dayInfo, horizonKeys } from '../lib/dates';
 import { SLOT_BY_KEY, dayStatus, buildAlert } from '../lib/meals';
-import { DEFAULT_SETTINGS } from '../services/household';
+import { DEFAULT_SETTINGS, ensureHouseholdMeta } from '../services/household';
 import { capitalizeFirst } from '../lib/text';
 
 export const HouseholdContext = createContext(null);
 
-const SUBTREES = ['recipes', 'plan', 'orders', 'pantry', 'settings', 'members', 'joinCode', 'name'];
+const SUBTREES = [
+  'recipes', 'plan', 'orders', 'pantry', 'settings', 'members', 'joinCode', 'name', 'owner', 'rohlik', 'regulars',
+];
+
+// Recipe photos: householdPhotos/{hid}/{rid}; households/{hid}/photos/{rid} is the read-only legacy location.
+const photoPath = (hid, rid) => `householdPhotos/${hid}/${rid}`;
+const legacyPhotoPath = (hid, rid) => `households/${hid}/photos/${rid}`;
+const clip = (v, max) => String(v || '').trim().slice(0, max);
 
 function useTodayKey() {
   const [today, setToday] = useState(() => dateKey());
@@ -84,8 +91,22 @@ export function HouseholdProvider({ hid, children }) {
   const orders = useMemo(() => data.orders || {}, [data.orders]);
   const pantry = useMemo(() => data.pantry || {}, [data.pantry]);
   const members = useMemo(() => data.members || {}, [data.members]);
+  const regulars = useMemo(() => data.regulars || {}, [data.regulars]);
   const settings = useMemo(() => ({ ...DEFAULT_SETTINGS, ...(data.settings || {}) }), [data.settings]);
   const ready = SUBTREES.every((n) => loaded[n]);
+  const owner = data.owner || null;
+  const isOwner = !!uid && owner === uid;
+
+  // Households created before ownership existed: let the server backfill owner (once).
+  const metaRequested = useRef(false);
+  useEffect(() => {
+    if (!hid || !loaded.owner || !loaded.members || data.owner || metaRequested.current) return;
+    if (!data.members || !uid || !data.members[uid]) return;
+    metaRequested.current = true;
+    ensureHouseholdMeta().catch(() => {
+      metaRequested.current = false;
+    });
+  }, [hid, uid, loaded.owner, loaded.members, data.owner, data.members]);
 
   const horizon = useMemo(() => horizonKeys(todayKey), [todayKey]);
   const statusOf = useCallback(
@@ -105,7 +126,8 @@ export function HouseholdProvider({ hid, children }) {
       const k = photoKey(rid, r);
       if (photoRequests.current.has(k)) return;
       photoRequests.current.add(k);
-      get(ref(db, `households/${hid}/photos/${rid}`))
+      get(ref(db, photoPath(hid, rid)))
+        .then((snap) => (snap.exists() ? snap : get(ref(db, legacyPhotoPath(hid, rid)))))
         .then((snap) => setPhotos((p) => ({ ...p, [k]: snap.val() || null })))
         .catch(() => {
           photoRequests.current.delete(k);
@@ -180,49 +202,66 @@ export function HouseholdProvider({ hid, children }) {
       let hasPhoto = !!prev.hasPhoto;
       if (typeof photo === 'string') hasPhoto = true;
       if (photo === null) hasPhoto = false;
+      // Limits mirror database.rules.json.
       const recipe = {
-        name: draft.name.trim() || 'Nový recept',
-        emoji: draft.emoji || prev.emoji || '🍽️',
+        name: clip(draft.name, 80) || 'Nový recept',
+        emoji: clip(draft.emoji || prev.emoji, 16) || '🍽️',
         type: draft.type,
-        preparation: (draft.preparation || '').trim(),
-        instructions: (draft.instructions || '').trim(),
+        preparation: clip(draft.preparation, 80),
+        instructions: clip(draft.instructions, 5000),
         ingredients: (draft.ingredients || [])
           .filter((g) => g.name && g.name.trim())
-          .map((g) => ({ name: g.name.trim(), amount: (g.amount || '').trim() })),
+          .slice(0, 60)
+          .map((g) => ({ name: clip(g.name, 80), amount: clip(g.amount, 40) })),
         builtinImage: typeof photo === 'string' ? null : prev.builtinImage || null,
         hasPhoto,
         createdBy: prev.createdBy || uid,
         updatedAt: now,
       };
-      const updates = { [`recipes/${rid}`]: recipe };
-      if (typeof photo === 'string') updates[`photos/${rid}`] = photo;
-      if (photo === null) updates[`photos/${rid}`] = null;
-      await update(ref(db, base), updates);
+      const updates = { [`${base}/recipes/${rid}`]: recipe };
+      if (typeof photo === 'string' || photo === null) {
+        updates[photoPath(hid, rid)] = photo;
+        if (prev.hasPhoto) updates[legacyPhotoPath(hid, rid)] = null;
+      }
+      await update(ref(db), updates);
       if (typeof photo === 'string') {
         setPhotos((p) => ({ ...p, [`${rid}:${now}`]: photo }));
         photoRequests.current.add(`${rid}:${now}`);
+      } else if (photo === undefined && hasPhoto) {
+        // Move a legacy photo to the new location (best effort, never blocks the save).
+        get(ref(db, photoPath(hid, rid)))
+          .then((cur) => (cur.exists() ? null : get(ref(db, legacyPhotoPath(hid, rid)))))
+          .then((old) => {
+            if (!old || !old.exists()) return null;
+            return update(ref(db), { [photoPath(hid, rid)]: old.val(), [legacyPhotoPath(hid, rid)]: null });
+          })
+          .catch(() => {});
       }
       logActivity('recipe', `${nickname} ${isNew ? 'přidal(a)' : 'upravil(a)'} recept ${recipe.name}`);
       return rid;
     },
-    [base, recipes, uid, nickname, logActivity]
+    [base, hid, recipes, uid, nickname, logActivity]
   );
 
   const deleteRecipe = useCallback(
     async (rid) => {
       const r = recipes[rid];
-      const updates = { [`recipes/${rid}`]: null, [`photos/${rid}`]: null };
+      const updates = { [`${base}/recipes/${rid}`]: null };
+      if (r && r.hasPhoto) {
+        updates[photoPath(hid, rid)] = null;
+        updates[legacyPhotoPath(hid, rid)] = null;
+      }
       // Remove upcoming plan references (past days are kept untouched).
       Object.entries(plan).forEach(([day, slots]) => {
         if (day < todayKey || !slots) return;
         Object.entries(slots).forEach(([slot, v]) => {
-          if (v === rid) updates[`plan/${day}/${slot}`] = null;
+          if (v === rid) updates[`${base}/plan/${day}/${slot}`] = null;
         });
       });
-      await update(ref(db, base), updates);
+      await update(ref(db), updates);
       if (r) logActivity('recipe', `${nickname} smazal(a) recept ${r.name}`);
     },
-    [base, recipes, plan, todayKey, nickname, logActivity]
+    [base, hid, recipes, plan, todayKey, nickname, logActivity]
   );
 
   const togglePantry = useCallback(
@@ -251,9 +290,39 @@ export function HouseholdProvider({ hid, children }) {
   const updateSettings = useCallback((patch) => update(ref(db, `${base}/settings`), patch), [base]);
 
   const updateHouseholdName = useCallback(
-    (name) => set(ref(db, `${base}/name`), capitalizeFirst(name) || null),
+    (name) => set(ref(db, `${base}/name`), capitalizeFirst(name).slice(0, 40) || null),
     [base]
   );
+
+  // ---------- regular shopping items (households/{hid}/regulars) ----------
+  const addRegular = useCallback(
+    ({ name, amount, auto }) => {
+      const n = clip(name, 80);
+      if (!n) return Promise.reject(new Error('Doplňte název položky.'));
+      const item = { name: n, auto: !!auto, createdBy: uid, createdAt: Date.now() };
+      const a = clip(amount, 40);
+      if (a) item.amount = a;
+      return push(ref(db, `${base}/regulars`), item);
+    },
+    [base, uid]
+  );
+
+  const updateRegular = useCallback(
+    (id, patch) => {
+      const out = {};
+      if (patch.name !== undefined) {
+        const n = clip(patch.name, 80);
+        if (!n) return Promise.reject(new Error('Doplňte název položky.'));
+        out.name = n;
+      }
+      if (patch.amount !== undefined) out.amount = clip(patch.amount, 40) || null;
+      if (patch.auto !== undefined) out.auto = !!patch.auto;
+      return update(ref(db, `${base}/regulars/${id}`), out);
+    },
+    [base]
+  );
+
+  const deleteRegular = useCallback((id) => remove(ref(db, `${base}/regulars/${id}`)), [base]);
 
   const value = useMemo(
     () => ({
@@ -269,6 +338,10 @@ export function HouseholdProvider({ hid, children }) {
       pantry,
       members,
       settings,
+      regulars,
+      owner,
+      isOwner,
+      rohlik: data.rohlik || null,
       joinCode: data.joinCode || '',
       name: data.name || '',
       activity,
@@ -287,11 +360,15 @@ export function HouseholdProvider({ hid, children }) {
       updateSettings,
       updateHouseholdName,
       logActivity,
+      addRegular,
+      updateRegular,
+      deleteRegular,
     }),
     [
       hid, uid, nickname, ready, todayKey, horizon, recipes, plan, orders, pantry, members, settings,
       data.joinCode, data.name, activity, alert, pendingDays, statusOf, requestPhoto, photoFor, setMeal, removeMeal,
       saveRecipe, deleteRecipe, togglePantry, setOrderStatus, clearOrder, updateSettings, updateHouseholdName, logActivity,
+      regulars, owner, isOwner, data.rohlik, addRegular, updateRegular, deleteRegular,
     ]
   );
 

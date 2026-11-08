@@ -85,8 +85,37 @@ export function isInPantry(item, pantry) {
 }
 
 export function itemDetail(item) {
-  const meals = item.meals.length === 1 ? item.meals[0] : `${item.meals.length} jídla`;
+  let meals = '';
+  if (item.regular) meals = 'Pravidelná položka';
+  else if (item.meals.length === 1) meals = item.meals[0];
+  else if (item.meals.length > 1) meals = `${item.meals.length} jídla`;
   return [item.amounts.join(' + '), meals].filter(Boolean).join(' · ');
+}
+
+// ---------- regular shopping items (households/{hid}/regulars) ----------
+
+// Prefix keeps regular items from ever merging with ingredient keys.
+export const REGULAR_PREFIX = 'regular:';
+
+/** Selected for this shopping? Local override first, otherwise the item's "auto" flag. */
+export const isRegularSelected = (id, r, selection) =>
+  selection && typeof selection[id] === 'boolean' ? selection[id] : !!(r && r.auto);
+
+/** Regulars as shopping items ({ key, name, amounts, meals, regular }), sorted by name. */
+export function regularItems(regulars, selection, { onlySelected = true } = {}) {
+  return Object.entries(regulars || {})
+    .filter(([, r]) => r && r.name)
+    .filter(([id, r]) => !onlySelected || isRegularSelected(id, r, selection))
+    .map(([id, r]) => ({
+      key: `${REGULAR_PREFIX}${id}`,
+      id,
+      name: r.name,
+      amounts: r.amount ? [r.amount] : [],
+      meals: [],
+      regular: true,
+      auto: !!r.auto,
+    }))
+    .sort((x, y) => x.name.localeCompare(y.name, 'cs'));
 }
 
 /** Plain-text shopping list for the clipboard. */
