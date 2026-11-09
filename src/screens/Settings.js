@@ -21,6 +21,7 @@ const REMINDERS = [
 const SHOP_TOGGLES = [
   ['preferLight', 'Upřednostnit light / 0 % tuku', 'Nízkotučné varianty, skyr, odtučněné mléko…'],
   ['preferBio', 'Upřednostnit BIO', 'Produkty s označením BIO'],
+  ['xtra', 'Mám Rohlík Xtra', 'Ceny pro členy Xtra se použijí v součtech a řazení'],
 ];
 const SHOP_SORT = [
   ['best', 'Nejlepší shoda'],

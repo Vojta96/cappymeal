@@ -280,3 +280,15 @@ test('matchItem: user query override and fallback when everything is excluded', 
   const m = await matchItem(s, { key: 'mléko', name: 'Mléko', amounts: [] });
   assert.ok(m.candidates.length > 0);
 });
+
+test('rank: Xtra households sort by the Xtra unit price', () => {
+  const mk = (id, price, xtra) => ps.enrich(a.normaliseProduct({
+    productId: id, productName: `Cottage sýr ${id}`, textualAmount: '200 g', price, pricePerUnit: { full: price * 5, currency: 'CZK' },
+    ...(xtra ? { xtraMemberPrice: { price: xtra, currency: 'CZK' } } : {}),
+  }));
+  const products = [mk('1', 40), mk('2', 50, 30), mk('3', 45)];
+  assert.strictEqual(ps.rank(products, { query: 'cottage sýr', prefs: { sort: 'unitPrice' } })[0].productId, '1');
+  const x = ps.rank(products, { query: 'cottage sýr', prefs: { sort: 'unitPrice', xtra: true } });
+  assert.strictEqual(x[0].productId, '2');
+  assert.strictEqual(x[0].xtraUnitPrice, 150);
+});

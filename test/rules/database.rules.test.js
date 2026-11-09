@@ -352,6 +352,8 @@ test('settings/shop validation', async () => {
   }));
   await assertSucceeds(set(ref(bob, `households/${HID}/settings/shop/sort`), 'best'));
   await assertFails(set(ref(bob, `households/${HID}/settings/shop/sort`), 'cheapest'));
+  await assertSucceeds(set(ref(bob, `households/${HID}/settings/shop/xtra`), true));
+  await assertFails(set(ref(bob, `households/${HID}/settings/shop/xtra`), 'yes'));
   await assertFails(set(ref(bob, `households/${HID}/settings/shop/preferBio`), 'yes'));
   await assertFails(set(ref(bob, `households/${HID}/settings/shop/evil`), true));
   await assertFails(set(ref(db('eve'), `households/${HID}/settings/shop/preferLight`), true));

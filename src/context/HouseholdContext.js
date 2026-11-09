@@ -618,11 +618,11 @@ export function HouseholdProvider({ hid, children }) {
   /** chosen: [{ key, product }] – the variants confirmed with "Vložit do košíku". */
   const saveProductPrefs = useCallback(
     (chosen) => {
-      const updates = prefUpdates(chosen, productPrefs, uid, Date.now());
+      const updates = prefUpdates(chosen, productPrefs, uid, Date.now(), !!(settings.shop && settings.shop.xtra));
       if (!Object.keys(updates).length) return Promise.resolve();
       return update(ref(db, `${base}/productPrefs`), updates);
     },
-    [base, uid, productPrefs]
+    [base, uid, productPrefs, settings]
   );
 
   const value = useMemo(

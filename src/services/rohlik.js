@@ -51,7 +51,7 @@ export async function matchProducts(items, prefs) {
   const results = [];
   for (const part of chunks(items.map(matchItem), MATCH_CHUNK)) {
     const data = { items: part };
-    if (prefs) data.prefs = { preferLight: !!prefs.preferLight, preferBio: !!prefs.preferBio, sort: prefs.sort === 'unitPrice' ? 'unitPrice' : 'best' };
+    if (prefs) data.prefs = { preferLight: !!prefs.preferLight, preferBio: !!prefs.preferBio, xtra: !!prefs.xtra, sort: prefs.sort === 'unitPrice' ? 'unitPrice' : 'best' };
     // eslint-disable-next-line no-await-in-loop
     const res = await callFunction('rohlikMatch', data, LONG);
     results.push(...((res && res.results) || []));

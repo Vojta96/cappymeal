@@ -233,6 +233,35 @@ function pickPack(o) {
   return null;
 }
 
+/** Czech money text: 59.9 -> "59,9 Kč", 89.91 -> "89,91 Kč". */
+function kc(n) {
+  return `${String(Math.round(n * 100) / 100).replace('.', ',')} Kč`;
+}
+
+/** Pre-sale price (only a real reduction counts: originalPrice > price). */
+function pickOriginal(o) {
+  const raw = o.originalPrice !== undefined && o.originalPrice !== null ? o.originalPrice : o.regularPrice;
+  const orig = raw && typeof raw === 'object' ? toNumber(raw.amount ?? raw.value ?? raw.full) : toNumber(raw);
+  const cur = pickPrice(o).price;
+  return orig > 0 && cur > 0 && orig > cur ? orig : null;
+}
+
+/** Rohlík Xtra member price ({ price, originalPrice, discountPercentage }) – only when cheaper than the price. */
+function pickXtra(o) {
+  const x = o.xtraMemberPrice;
+  if (!x || typeof x !== 'object') return null;
+  const price = toNumber(x.price);
+  const cur = pickPrice(o).price;
+  if (!(price > 0) || !(cur > 0) || price >= cur) return null;
+  const pct = toNumber(x.discountPercentage);
+  return { price, percent: pct > 0 ? Math.round(pct) : Math.round((1 - price / cur) * 100) };
+}
+
+const percentOf = (o, orig, cur) => {
+  const pct = toNumber(o.discountPercentage);
+  return pct > 0 ? Math.round(pct) : Math.round((1 - cur / orig) * 100);
+};
+
 function pickBadges(o) {
   const out = [];
   for (const k of ['badges', 'labels', 'tags', 'flags', 'stickers']) {
@@ -245,10 +274,9 @@ function pickBadges(o) {
     }
   }
   if (o.bio === true || o.isBio === true || o.organic === true) out.push('BIO');
-  const origRaw = o.originalPrice !== undefined ? o.originalPrice : o.regularPrice;
-  const orig = origRaw && typeof origRaw === 'object' ? toNumber(origRaw.amount ?? origRaw.value) : toNumber(origRaw);
+  const orig = pickOriginal(o);
   const cur = pickPrice(o).price;
-  if (o.sale === true || o.inPromotion === true || (orig && cur && orig > cur)) out.push('Akce');
+  if (orig && cur && orig > cur) out.push('Akce');
   return [...new Set(out)].slice(0, 6);
 }
 
@@ -265,6 +293,8 @@ function normaliseProduct(o) {
   const slug = o.url || o.link || o.slug || null;
   const up = pickUnitPrice(o);
   const brand = label(o.brand || o.brandName || o.manufacturer);
+  const orig = pickOriginal(o);
+  const xtra = pickXtra(o);
   const category = label(o.category || o.categoryName || (Array.isArray(o.categories) && o.categories[0]));
   return {
     productId: String(id),
@@ -277,6 +307,13 @@ function normaliseProduct(o) {
     available: pickAvailable(o),
     brand: typeof brand === 'string' ? brand.slice(0, 60) : null,
     category: typeof category === 'string' ? category.slice(0, 60) : null,
+    originalPrice: orig,
+    originalPriceText: orig ? kc(orig) : null,
+    discountPercent: orig ? percentOf(o, orig, price) : null,
+    xtraPrice: xtra ? xtra.price : null,
+    xtraPriceText: xtra ? kc(xtra.price) : null,
+    xtraDiscountPercent: xtra ? xtra.percent : null,
+    xtraUnitPrice: xtra && up ? Math.round((up.value * xtra.price / price) * 100) / 100 : null,
     badges: pickBadges(o),
     pack: pickPack(o),
     unitPriceValue: up ? up.value : null,

@@ -20,7 +20,7 @@ import { fillCart, matchProducts, needsReconnect, syncRohlikOrders } from '../se
 import { rememberAdded } from './CartCheckout';
 import ProductCarousel from '../components/ProductCarousel';
 import { formatQty, leftoverText, needForServer, presetQty, sumNeed } from '../lib/quantity';
-import { arrangeCandidates, shopPrefs } from '../lib/shop';
+import { arrangeCandidates, priceInfo, savingsOf, shopPrefs, totalOf } from '../lib/shop';
 import { useIsDesktop } from '../hooks/useMediaQuery';
 import './cart.css';
 
@@ -56,14 +56,15 @@ function mealsText(item) {
 }
 
 /** One shopping item: header (name, need, meals, "Hledat jinak", "Přeskočit"), variant carousel, quantity. */
-function ShopItem({ item, need, entry, pick, busy, loading, onPick, onSearch }) {
+function ShopItem({ item, need, entry, pick, busy, loading, xtra, onPick, onSearch }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
   const options = (entry && entry.options) || [];
   const prod = !pick.skip && pick.idx >= 0 ? options[pick.idx] : null;
   const sub = [need ? `Potřeba: ${formatQty(need)}` : '', mealsText(item)].filter(Boolean).join(' · ');
   const hints = options.map((o, i) => leftoverText(need, o, i === pick.idx ? pick.qty : presetQty(need, o)));
-  const price = prod && Number(prod.price) > 0 ? Number(prod.price) : null;
+  const info = prod ? priceInfo(prod, xtra) : null;
+  const price = info ? info.price : null;
 
   const submit = (e) => {
     e.preventDefault();
@@ -162,6 +163,7 @@ function ShopItem({ item, need, entry, pick, busy, loading, onPick, onSearch }) 
           label={`Varianty – ${item.name}`}
           hints={hints}
           disabled={busy}
+          xtra={xtra}
         />
       ) : (
         <div className="cart__none">Rohlík nenašel žádný vhodný produkt. Zkuste „Hledat jinak“.</div>
@@ -173,7 +175,8 @@ function ShopItem({ item, need, entry, pick, busy, loading, onPick, onSearch }) 
             {price != null ? (
               <>
                 <span>
-                  {pick.qty} × {prod.priceText || formatKc(price)}
+                  {pick.qty} × {info.text || formatKc(price)}
+                  {info.refPrice ? <span className="shop-item__sale"> −{info.percent} %</span> : null}
                 </span>
                 <strong>{formatKc(price * pick.qty)}</strong>
               </>
@@ -541,7 +544,15 @@ export default function Cart() {
       return { item: it, product: c[pk.idx], qty: pk.qty };
     })
     .filter(Boolean);
-  const total = chosen.reduce((a, x) => a + (Number(x.product.price) || 0) * x.qty, 0);
+  const total = totalOf(chosen, shop.xtra);
+  const savings = savingsOf(chosen, shop.xtra);
+  const savingsLine =
+    savings >= 1 ? (
+      <div className="cart__savings">
+        <Icon name="sell" size={18} />
+        Ušetříte cca {formatKc(savings)}
+      </div>
+    ) : null;
 
   const toCart = async () => {
     setError(null);
@@ -862,6 +873,7 @@ export default function Cart() {
             <span>Celkem</span>
             <strong>{formatKc(total)}</strong>
           </div>
+          {savingsLine}
           {total > 0 && total < MIN_ORDER_KC && (
             <div className="cart__min">
               <Icon name="info" size={18} />
@@ -1106,6 +1118,7 @@ export default function Cart() {
                           pick={picks[it.key] || { idx: -1, qty: 1, skip: true }}
                           busy={busy}
                           loading={!!itemBusy[it.key]}
+                          xtra={shop.xtra}
                           onPick={(patch) => setPick(it.key, patch)}
                           onSearch={(q) => searchItem(it, q)}
                         />
@@ -1119,6 +1132,7 @@ export default function Cart() {
                       {formatKc(MIN_ORDER_KC - total)}. Zbytek můžete doplnit v aplikaci Rohlík.
                     </div>
                   )}
+                  {!isDesktop && savingsLine}
                   {!isDesktop && (
                     <div className="sticky-action">
                       <button

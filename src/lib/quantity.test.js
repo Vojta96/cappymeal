@@ -9,7 +9,7 @@ import {
   presetQty,
   sumNeed,
 } from './quantity';
-import { arrangeCandidates, prefRecord, prefUpdates, shopPrefs } from './shop';
+import { arrangeCandidates, prefRecord, prefUpdates, priceInfo, savingsOf, shopPrefs, totalOf, unitPriceLabel } from './shop';
 
 describe('parseAmount', () => {
   test('metric units, decimal commas, no space', () => {
@@ -184,7 +184,51 @@ describe('shop helpers', () => {
     expect(Object.keys(u)).toEqual(['cottage sýr', 'regular:k1']);
   });
   test('shopPrefs defaults', () => {
-    expect(shopPrefs({})).toEqual({ preferLight: false, preferBio: false, sort: 'best' });
-    expect(shopPrefs({ shop: { preferBio: true, sort: 'unitPrice' } })).toEqual({ preferLight: false, preferBio: true, sort: 'unitPrice' });
+    expect(shopPrefs({})).toEqual({ preferLight: false, preferBio: false, xtra: false, sort: 'best' });
+    expect(shopPrefs({ shop: { preferBio: true, sort: 'unitPrice' } })).toEqual({ preferLight: false, preferBio: true, xtra: false, sort: 'unitPrice' });
+  });
+});
+
+describe('discounts and Xtra price', () => {
+  const sale = { price: 59.9, priceText: '59,9 Kč', originalPrice: 80.9, originalPriceText: '80,9 Kč', discountPercent: 25 };
+  const withXtra = {
+    price: 99.9, priceText: '99,9 Kč', xtraPrice: 89.91, xtraPriceText: '89,91 Kč', xtraDiscountPercent: 10,
+    unitPriceText: '100 Kč/kg', xtraUnitPriceText: '90 Kč/kg',
+  };
+
+  test('sale: regular price with struck-through original', () => {
+    const i = priceInfo(sale, false);
+    expect(i).toMatchObject({ price: 59.9, refPrice: 80.9, percent: 25, xtraApplied: false, xtraOffer: null });
+  });
+
+  test('Xtra household uses the Xtra price, reference is the regular price', () => {
+    const i = priceInfo(withXtra, true);
+    expect(i).toMatchObject({ price: 89.91, text: '89,91 Kč', refPrice: 99.9, refText: '99,9 Kč', percent: 10, xtraApplied: true });
+    expect(unitPriceLabel(withXtra, true)).toBe('90 Kč/kg');
+  });
+
+  test('non-Xtra household sees the Xtra price only as an offer', () => {
+    const i = priceInfo(withXtra, false);
+    expect(i).toMatchObject({ price: 99.9, refPrice: null, xtraApplied: false });
+    expect(i.xtraOffer).toEqual({ price: 89.91, text: '89,91 Kč' });
+    expect(unitPriceLabel(withXtra, false)).toBe('100 Kč/kg');
+  });
+
+  test('totals and savings', () => {
+    const chosen = [{ product: sale, qty: 2 }, { product: withXtra, qty: 1 }, { product: { price: 10 }, qty: 3 }];
+    expect(totalOf(chosen, false)).toBeCloseTo(59.9 * 2 + 99.9 + 30);
+    expect(savingsOf(chosen, false)).toBeCloseTo(21 * 2);
+    expect(totalOf(chosen, true)).toBeCloseTo(59.9 * 2 + 89.91 + 30);
+    expect(savingsOf(chosen, true)).toBeCloseTo(21 * 2 + 9.99);
+  });
+
+  test('remembered snapshot stores the effective price text', () => {
+    expect(prefRecord({ productId: 1, name: 'X', ...withXtra }, null, 'u', 1, true).priceText).toBe('89,91 Kč');
+    expect(prefRecord({ productId: 1, name: 'X', ...withXtra }, null, 'u', 1, false).priceText).toBe('99,9 Kč');
+  });
+
+  test('shopPrefs reads xtra', () => {
+    expect(shopPrefs({ shop: { xtra: true } }).xtra).toBe(true);
+    expect(shopPrefs({}).xtra).toBe(false);
   });
 });

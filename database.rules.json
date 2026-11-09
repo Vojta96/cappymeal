@@ -192,6 +192,7 @@
           "shop": {
             "preferLight": { ".validate": "newData.isBoolean()" },
             "preferBio": { ".validate": "newData.isBoolean()" },
+            "xtra": { ".validate": "newData.isBoolean()" },
             "sort": { ".validate": "newData.isString() && (newData.val() === 'best' || newData.val() === 'unitPrice')" },
             "$other": { ".validate": false }
           },

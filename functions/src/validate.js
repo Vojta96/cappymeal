@@ -203,7 +203,7 @@ function validateMatchItems(data) {
 /** Household shopping preferences (settings/shop) as passed to rohlikMatch; unknown → defaults. */
 function validateShopPrefs(data) {
   const p = isPlainObject(data) ? data.prefs : undefined;
-  if (p === undefined || p === null) return { preferLight: false, preferBio: false, sort: 'best' };
+  if (p === undefined || p === null) return { preferLight: false, preferBio: false, xtra: false, sort: 'best' };
   if (!isPlainObject(p)) throw new InputError('Neplatné předvolby nákupu.');
   const bool = (x) => {
     if (x === undefined || x === null) return false;
@@ -212,7 +212,7 @@ function validateShopPrefs(data) {
   };
   const sort = p.sort === undefined || p.sort === null ? 'best' : p.sort;
   if (!['best', 'unitPrice'].includes(sort)) throw new InputError('Neplatné předvolby nákupu.');
-  return { preferLight: bool(p.preferLight), preferBio: bool(p.preferBio), sort };
+  return { preferLight: bool(p.preferLight), preferBio: bool(p.preferBio), xtra: bool(p.xtra), sort };
 }
 
 /** rohlikFillCart input. */

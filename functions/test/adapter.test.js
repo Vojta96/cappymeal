@@ -79,3 +79,29 @@ test('tool list cache is per client', async () => {
   await a.listTools(c2);
   assert.strictEqual(calls, 2);
 });
+
+test('normaliseProduct: sale and Xtra price from real field names', () => {
+  const p = a.normaliseProduct({
+    productId: 1, productName: 'Sýr 200 g', textualAmount: '200 g', price: 59.9, originalPrice: 80.9, discountPercentage: 25,
+    pricePerUnit: { full: 299.5, currency: 'CZK' }, badges: ['best-buy'],
+    xtraMemberPrice: { price: 49.9, currency: 'CZK', originalPrice: 59.9, discountPercentage: 17 },
+  });
+  assert.strictEqual(p.price, 59.9);
+  assert.strictEqual(p.originalPrice, 80.9);
+  assert.strictEqual(p.originalPriceText, '80,9 Kč');
+  assert.strictEqual(p.discountPercent, 25);
+  assert.strictEqual(p.xtraPrice, 49.9);
+  assert.strictEqual(p.xtraPriceText, '49,9 Kč');
+  assert.strictEqual(p.xtraDiscountPercent, 17);
+  assert.strictEqual(p.xtraUnitPrice, Math.round((299.5 * 49.9 / 59.9) * 100) / 100);
+  assert.ok(p.badges.includes('Akce'));
+});
+
+test('normaliseProduct: no sale without a real reduction', () => {
+  const p = a.normaliseProduct({ productId: 2, productName: 'X', price: 10, originalPrice: 10, discountPercentage: 0,
+    xtraMemberPrice: { price: 12, currency: 'CZK' } });
+  assert.strictEqual(p.originalPrice, null);
+  assert.strictEqual(p.discountPercent, null);
+  assert.strictEqual(p.xtraPrice, null);
+  assert.ok(!p.badges.includes('Akce'));
+});

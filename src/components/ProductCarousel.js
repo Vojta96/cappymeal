@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from './ui';
+import { priceInfo, unitPriceLabel } from '../lib/shop';
 import './productCarousel.css';
 
 const reducedMotion = () =>
@@ -8,6 +9,27 @@ const reducedMotion = () =>
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const selectable = (o) => !!o && o.available !== false;
+
+function Price({ option, xtra }) {
+  const info = priceInfo(option, xtra);
+  const unit = unitPriceLabel(option, xtra);
+  return (
+    <div className="pc__prices">
+      <div className="pc__pricerow">
+        <span className="pc__price">{info.text || ''}</span>
+        {info.xtraApplied && <span className="pc__xtra">Xtra</span>}
+        {info.refPrice && (
+          <>
+            <s className="pc__old">{info.refText}</s>
+            <span className="pc__pct">−{info.percent} %</span>
+          </>
+        )}
+      </div>
+      {info.xtraOffer && <div className="pc__xtraoffer">s Xtra {info.xtraOffer.text}</div>}
+      {unit && <span className="pc__uprice">{unit}</span>}
+    </div>
+  );
+}
 
 function Badges({ option }) {
   const list = [];
@@ -33,11 +55,11 @@ function Badges({ option }) {
  * Phone: one card ~70 % wide with neighbours peeking, swipe; desktop (>= 1024 px): 3 cards + arrows.
  * Accessible as a listbox: arrow keys / Home / End move the selection, Enter / Space select.
  *
- * props: options [{ productId, name, imageUrl, packText, priceText, unitPriceText, available, badges,
+ * props: xtra (household has Rohlík Xtra: Xtra prices are effective), options [{ productId, name, imageUrl, packText, priceText, unitPriceText, available, badges,
  *        preferred, snapshot }], selected (index, -1 = none), onSelect(index), label, hints (per option text),
  *        disabled
  */
-export default function ProductCarousel({ options, selected, onSelect, label, hints = [], disabled = false }) {
+export default function ProductCarousel({ options, selected, onSelect, label, hints = [], disabled = false, xtra = false }) {
   const trackRef = useRef(null);
   const cardRefs = useRef([]);
   const firstScroll = useRef(true);
@@ -183,10 +205,7 @@ export default function ProductCarousel({ options, selected, onSelect, label, hi
                 </div>
                 <div className="pc__name">{o.name}</div>
                 {o.packText && <div className="pc__pack">{o.packText}</div>}
-                <div className="pc__prices">
-                  <span className="pc__price">{o.priceText || ''}</span>
-                  {o.unitPriceText && <span className="pc__uprice">{o.unitPriceText}</span>}
-                </div>
+                <Price option={o} xtra={xtra} />
                 {hints[i] && <div className="pc__hint">{hints[i]}</div>}
               </div>
             );

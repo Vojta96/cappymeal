@@ -129,10 +129,12 @@ test('rohlikMatch input caps', () => {
 });
 
 test('rohlikMatch shop prefs', () => {
-  assert.deepStrictEqual(v.validateShopPrefs({}), { preferLight: false, preferBio: false, sort: 'best' });
+  assert.deepStrictEqual(v.validateShopPrefs({}), { preferLight: false, preferBio: false, xtra: false, sort: 'best' });
   assert.deepStrictEqual(v.validateShopPrefs({ prefs: { preferLight: true, sort: 'unitPrice' } }),
-    { preferLight: true, preferBio: false, sort: 'unitPrice' });
+    { preferLight: true, preferBio: false, xtra: false, sort: 'unitPrice' });
   assert.throws(() => v.validateShopPrefs({ prefs: { preferBio: 'yes' } }), v.InputError);
+  assert.strictEqual(v.validateShopPrefs({ prefs: { xtra: true } }).xtra, true);
+  assert.throws(() => v.validateShopPrefs({ prefs: { xtra: 'yes' } }), v.InputError);
   assert.throws(() => v.validateShopPrefs({ prefs: { sort: 'random' } }), v.InputError);
   assert.throws(() => v.validateShopPrefs({ prefs: 'x' }), v.InputError);
 });

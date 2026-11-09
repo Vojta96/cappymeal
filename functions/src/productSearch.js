@@ -204,6 +204,9 @@ function enrich(p) {
   const structured = p.unitPriceValue > 0 ? { value: p.unitPriceValue, per: p.unitPricePer || null } : null;
   const computed = q.computeUnitPrice(p.price, pack);
   const unitPrice = structured && structured.per ? structured : computed || structured;
+  const xtraUnit = p.xtraPrice > 0 && unitPrice && p.price > 0
+    ? { value: (p.xtraUnitPrice > 0 ? p.xtraUnitPrice : unitPrice.value * p.xtraPrice / p.price), per: unitPrice.per }
+    : null;
   const badges = Array.isArray(p.badges) ? [...p.badges] : [];
   if (isBio(p) && !badges.some((b) => /^bio$/i.test(b))) badges.push('BIO');
   if (isLight(p) && !badges.some((b) => /^light$/i.test(b))) badges.push('Light');
@@ -222,6 +225,14 @@ function enrich(p) {
     unitPrice: unitPrice ? Math.round(unitPrice.value * 100) / 100 : null,
     unitPricePer: unitPrice ? unitPrice.per : null,
     unitPriceText: p.unitPriceText || q.unitPriceText(unitPrice),
+    originalPrice: p.originalPrice || null,
+    originalPriceText: p.originalPriceText || null,
+    discountPercent: p.discountPercent || null,
+    xtraPrice: p.xtraPrice || null,
+    xtraPriceText: p.xtraPriceText || null,
+    xtraDiscountPercent: p.xtraDiscountPercent || null,
+    xtraUnitPrice: xtraUnit ? Math.round(xtraUnit.value * 100) / 100 : null,
+    xtraUnitPriceText: xtraUnit ? q.unitPriceText(xtraUnit) : null,
     available: p.available !== false,
     badges: badges.slice(0, 6),
   };
@@ -259,16 +270,18 @@ const MAX_CANDIDATES = 5;
  */
 function rank(products, opts = {}) {
   const prefs = opts.prefs || {};
+  // effective unit price: the Xtra one for households with Rohlík Xtra
+  const eff = (p) => (prefs.xtra && p.xtraUnitPrice > 0 ? p.xtraUnitPrice : p.unitPrice);
   const list = products.map((p, i) => ({ p, i, rel: tokenScore(opts.query || '', p.name) }));
   // unit price rank among candidates with the same price unit (0 = cheapest .. 1)
   const byPer = {};
   list.forEach((x) => {
-    if (x.p.unitPrice > 0) (byPer[x.p.unitPricePer || '?'] = byPer[x.p.unitPricePer || '?'] || []).push(x.p.unitPrice);
+    if (eff(x.p) > 0) (byPer[x.p.unitPricePer || '?'] = byPer[x.p.unitPricePer || '?'] || []).push(eff(x.p));
   });
   Object.values(byPer).forEach((arr) => arr.sort((a, b) => a - b));
   list.forEach((x) => {
     const arr = byPer[x.p.unitPricePer || '?'];
-    x.cheap = x.p.unitPrice > 0 && arr && arr.length > 1 ? 1 - arr.indexOf(x.p.unitPrice) / (arr.length - 1) : 0.5;
+    x.cheap = eff(x.p) > 0 && arr && arr.length > 1 ? 1 - arr.indexOf(eff(x.p)) / (arr.length - 1) : 0.5;
     const fit = opts.need ? q.packFit(opts.need, { qty: x.p.packQty, unit: x.p.packUnit }) : null;
     x.fit = fit == null ? 0.4 : fit;
     let boost = 0;
@@ -288,7 +301,7 @@ function rank(products, opts = {}) {
 
   const cmp = prefs.sort === 'unitPrice'
     ? (a, b) => (b.rel >= 0.5) - (a.rel >= 0.5)
-      || (a.p.unitPrice > 0 ? a.p.unitPrice : Infinity) - (b.p.unitPrice > 0 ? b.p.unitPrice : Infinity)
+      || (eff(a.p) > 0 ? eff(a.p) : Infinity) - (eff(b.p) > 0 ? eff(b.p) : Infinity)
       || b.score - a.score
     : (a, b) => b.score - a.score;
   pool.sort((a, b) => (b.p.available - a.p.available) || cmp(a, b));

@@ -33,6 +33,7 @@ const mockCandidates = [1, 2, 3].map((n) => ({
   priceText: `${30 + n} Kč`,
   unit: mockUnits[n - 1],
   imageUrl: null,
+  ...(n === 1 ? { originalPrice: 40, originalPriceText: '40 Kč', discountPercent: 22, xtraPrice: 28, xtraPriceText: '28 Kč', xtraDiscountPercent: 10 } : {}),
 }));
 const mockCalls = [];
 jest.mock('../services/rohlik', () => ({
@@ -338,7 +339,7 @@ test('Nákup – karusel variant, zapamatovaná volba, množství, hledat jinak'
 
   // the request carries the summed need, the remembered product and the household prefs
   const req = mockCalls[0];
-  expect(req.prefs).toEqual({ preferLight: false, preferBio: true, sort: 'best' });
+  expect(req.prefs).toEqual({ preferLight: false, preferBio: true, xtra: false, sort: 'best' });
   const spReq = req.items.find((i) => i.key === 'špagety');
   expect(spReq.need).toEqual({ qty: 200, unit: 'g' });
   expect(spReq.preferredProductId).toBe('9');
@@ -364,6 +365,10 @@ test('Nákup – karusel variant, zapamatovaná volba, množství, hledat jinak'
   expect(spItem.querySelector('.shop-item__total strong')).toHaveTextContent('64 Kč');
   // 500 g pack → "zbude 300 g" hint on its card
   expect(sp[1]).toHaveTextContent('zbude 300 g');
+  // sale on variant 1: struck-through original price, percent pill, Xtra offer line (household without Xtra)
+  expect(sp[1]).toHaveTextContent('40 Kč');
+  expect(sp[1]).toHaveTextContent('−22 %');
+  expect(sp[1]).toHaveTextContent('s Xtra 28 Kč');
   // keyboard: arrow right selects the next card (1 kg → 1 pack)
   fireEvent.keyDown(sp[2], { key: 'ArrowRight' });
   expect(sp[3]).toHaveAttribute('aria-selected', 'true');
@@ -708,4 +713,20 @@ describe('desktop layout (>= 1024px)', () => {
     expect(container.querySelector('.sidebar')).toBeNull();
     expect(container.querySelector('.tabbar')).not.toBeNull();
   });
+});
+
+test('Nákup – domácnost s Xtra používá Xtra ceny', async () => {
+  mockCalls.length = 0;
+  renderAt('/cart', <Cart />, '/cart', {
+    ...household,
+    settings: { ...household.settings, shop: { xtra: true } },
+  });
+  fireEvent.click(screen.getByText('Najít na Rohlíku'));
+  expect(await screen.findByText('Vyberte produkty')).toBeInTheDocument();
+  expect(mockCalls[0].prefs.xtra).toBe(true);
+  const opt = within(screen.getAllByRole('listbox')[2]).getAllByRole('option')[0];
+  expect(opt).toHaveTextContent('28 Kč');
+  expect(opt).toHaveTextContent('Xtra');
+  expect(opt).toHaveTextContent('−10 %');
+  expect(opt).not.toHaveTextContent('s Xtra');
 });
