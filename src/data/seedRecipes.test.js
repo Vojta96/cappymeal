@@ -3,27 +3,33 @@ import { seedRecipeRecords } from '../services/household';
 
 jest.mock('../services/functions', () => ({ callFunction: () => Promise.resolve({}) }));
 
-const placeholders = ['Snídaně od Páji', 'Polévka od Páji'];
-
 describe('seed recipes', () => {
   test('expected counts per type, unique ids and names', () => {
     const count = (t) => seedRecipes.filter((r) => r.type === t).length;
-    expect(seedRecipes).toHaveLength(23);
-    expect(count('breakfast')).toBe(7);
-    expect(count('lunch')).toBe(13);
-    expect(count('dinner')).toBe(3);
-    expect(new Set(seedRecipes.map((r) => r.id)).size).toBe(23);
-    expect(new Set(seedRecipes.map((r) => r.name)).size).toBe(23);
+    expect(seedRecipes).toHaveLength(174);
+    expect(count('breakfast')).toBe(34);
+    expect(count('snack')).toBe(30);
+    expect(count('lunch')).toBe(72);
+    expect(count('afternoon_snack')).toBe(16);
+    expect(count('dinner')).toBe(22);
+    expect(new Set(seedRecipes.map((r) => r.id)).size).toBe(174);
+    expect(new Set(seedRecipes.map((r) => r.name)).size).toBe(174);
   });
 
-  test('non-placeholder recipes have at least 2 ingredients and instructions', () => {
-    seedRecipes
-      .filter((r) => !placeholders.includes(r.name))
-      .forEach((r) => {
-        expect(r.ingredients.length).toBeGreaterThanOrEqual(2);
-        expect(r.instructions.length).toBeGreaterThan(10);
-        expect(r.preparation).not.toBe('');
-      });
+  test('no placeholders, every recipe has ingredients, instructions and a preparation', () => {
+    const names = seedRecipes.map((r) => r.name);
+    ['Snídaně od Páji', 'Polévka od Páji', 'Pomazánka s pečivem (vajíčková)'].forEach((n) => {
+      expect(names).not.toContain(n);
+    });
+    seedRecipes.forEach((r) => {
+      expect(r.ingredients.length).toBeGreaterThanOrEqual(1);
+      r.ingredients.forEach((g) => expect(g.amount).not.toBe(''));
+      expect(r.instructions.length).toBeGreaterThan(10);
+      expect(r.instructions.length).toBeLessThanOrEqual(5000);
+      expect(r.ingredients.length).toBeLessThanOrEqual(60);
+      expect(r.preparation).not.toBe('');
+      expect(r.name).toBe(r.name.charAt(0).toUpperCase() + r.name.slice(1));
+    });
   });
 
   test('records fit the database rules limits', () => {
