@@ -70,7 +70,7 @@ function ShopItem({ item, need, entry, pick, busy, loading, onPick, onSearch }) 
   };
 
   return (
-    <div className={`shop-item${prod ? '' : ' shop-item--skip'}`}>
+    <div className={`shop-item${pick.skip ? ' shop-item--skip' : ''}`}>
       <div className="shop-item__head">
         <div className="shop-item__body">
           <div className="shop-item__title">

@@ -348,11 +348,25 @@ async function listTools(client, { refresh = false } = {}) {
  * Runs one product search. Returns normalised products (up to SEARCH_LIMIT, in Rohlík's order).
  * onRaw(rawFirstProduct) is called with the first raw result object (for key logging).
  */
-async function searchProducts(client, query, { onRaw } = {}) {
+async function searchProducts(client, query, { onRaw, onDiag } = {}) {
   const tools = await listTools(client);
   const tool = pickSearchTool(tools);
   if (!tool) throw new Error('Rohlík MCP: nenalezen nástroj pro vyhledávání produktů.');
-  const res = await client.callTool({ name: tool.name, arguments: buildSearchArgs(tool, query) });
+  const args = buildSearchArgs(tool, query);
+  const res = await client.callTool({ name: tool.name, arguments: args });
+  if (onDiag) {
+    // Diagnostics (public catalogue data only, never tokens): which tool, which args, what came back.
+    onDiag({
+      tools: tools.map((t) => t.name),
+      tool: tool.name,
+      schema: Object.keys(props(tool)),
+      args,
+      isError: !!res.isError,
+      contentTypes: (res.content || []).map((c) => c.type),
+      structured: res.structuredContent ? describeKeys(res.structuredContent) : null,
+      text: resultText(res).slice(0, 2500),
+    });
+  }
   if (res.isError) return [];
   if (onRaw) {
     const raw = rawProducts(res);

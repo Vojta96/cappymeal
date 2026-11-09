@@ -567,7 +567,13 @@ exports.rohlikMatch = onCall(ROHLIK, handle('rohlikMatch', async (request) => {
       loggedKeys = true;
       console.info('rohlikMatch raw product keys:', rohlik.describeKeys(raw));
     };
-    const search = (query) => rohlik.searchProducts(client, query, { onRaw });
+    let diagLogged = 0;
+    const onDiag = (d) => {
+      if (diagLogged >= 2) return;
+      diagLogged += 1;
+      console.info('rohlikMatch diag:', JSON.stringify(d));
+    };
+    const search = (query) => rohlik.searchProducts(client, query, { onRaw, onDiag });
     const results = new Array(items.length);
     let next = 0;
     async function worker() {

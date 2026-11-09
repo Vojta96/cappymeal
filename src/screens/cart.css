@@ -313,12 +313,14 @@
 
 .shop-item__head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: 6px;
 }
 
+/* Title keeps at least ~180px; when the column is narrow the buttons wrap below it. */
 .shop-item__body {
-  flex: 1;
+  flex: 1 1 180px;
   min-width: 0;
   display: flex;
   flex-direction: column;

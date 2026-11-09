@@ -70,7 +70,7 @@ export function aggregateIngredients(dayKeys, plan, recipes) {
   return Object.values(map).sort((a, b) => a.name.localeCompare(b.name, 'cs'));
 }
 
-export const STAPLE = /sůl|pepř|olej|skořice|koření|kmín|kurkuma|bazalka|oregano|tymián|dle chuti|med$/i;
+export const STAPLE = /sůl|pepř|olej|skořice|koření|kmín|kurkuma|bazalka|oregano|tymián|dle chuti|med$|^voda\b|^voda nebo/i;
 const TINY_AMOUNT = /dle chuti|pár kapek|špetka/i;
 
 /** Default "Mám doma" guess for an aggregated item. */
