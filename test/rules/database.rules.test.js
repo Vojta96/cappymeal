@@ -54,7 +54,9 @@ test.beforeEach(async () => {
         eve: { nickname: 'Eve' },
       },
       joinCodes: { ABCD2345: HID },
-      rohlikCredentials: { [HID]: { v: 1, iv: 'x', tag: 'y', ct: 'z' } },
+      rohlikCredentials: { [HID]: { v: 2, iv: 'x', tag: 'y', ct: 'z' } },
+      rohlikOAuthClient: { client_id: 'c', redirect_uri: 'http://127.0.0.1:8976/rohlik-callback', registeredAt: 1 },
+      rohlikOAuthPending: { [HID]: { state: 's', uid: 'alice', createdAt: 1 } },
       rateLimits: { h: { [HID]: { rohlikMatch: { start: 1, count: 1 } } } },
       households: {
         [HID]: {
@@ -100,7 +102,10 @@ test('joinCodes: single key read, no client writes, no listing', async () => {
 });
 
 test('admin-only trees', async () => {
-  for (const p of [`rohlikCredentials/${HID}`, 'rateLimits', 'householdIndex']) {
+  for (const p of [
+    `rohlikCredentials/${HID}`, 'rateLimits', 'householdIndex',
+    'rohlikOAuthClient', `rohlikOAuthPending/${HID}`, 'rohlikOAuthPending',
+  ]) {
     // eslint-disable-next-line no-await-in-loop
     await assertFails(get(ref(db('alice'), p)));
     // eslint-disable-next-line no-await-in-loop

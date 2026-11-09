@@ -4,14 +4,13 @@ import { useHousehold } from '../context/HouseholdContext';
 import PushBanner, { useBanner } from './PushBanner';
 import { Icon, Splash } from './ui';
 import { onForegroundMessage } from '../services/push';
-import { useAuth } from '../context/AuthContext';
 import { useIsDesktop } from '../hooks/useMediaQuery';
 import { householdDisplayName, initial } from '../lib/text';
 import { plural } from '../lib/dates';
 import logo from '../Images/Cappy.png';
 
 const TABS = [
-  { to: '/', label: 'Přehled', icon: 'home', match: (p) => p === '/' || p.startsWith('/notifications') },
+  { to: '/', label: 'Přehled', icon: 'home', match: (p) => p === '/' || p.startsWith('/notifications') || p.startsWith('/settings') },
   { to: '/plan', label: 'Plán', icon: 'calendar_month', match: (p) => p.startsWith('/plan') },
   { to: '/recipes', label: 'Recepty', icon: 'menu_book', match: (p) => p.startsWith('/recipes') },
   { to: '/cart', label: 'Nákup', icon: 'shopping_basket', match: (p) => p.startsWith('/cart') },
@@ -50,7 +49,6 @@ const AVATAR_COLORS = ['#C49A6C', '#8FA87A'];
 
 export function Sidebar() {
   const { pathname } = useLocation();
-  const { logout } = useAuth();
   const { pendingDays, alert, members, name } = useHousehold();
   const list = Object.values(members || {}).sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
   const badges = { '/cart': pendingDays.length || 0, '/notifications': alert ? 1 : 0 };
@@ -75,7 +73,12 @@ export function Sidebar() {
         })}
       </nav>
       <div className="sidebar__foot">
-        <div className="row" style={{ gap: 10 }}>
+        <NavLink
+          to="/settings"
+          className={`sidebar__household${pathname.startsWith('/settings') ? ' sidebar__household--on' : ''}`}
+          aria-label="Nastavení domácnosti"
+          title="Nastavení"
+        >
           <div className="sidebar__avatars">
             {list.map((m, i) => (
               <span
@@ -96,11 +99,8 @@ export function Sidebar() {
               {list.length} {plural(list.length, 'člen', 'členové', 'členů')}
             </span>
           </div>
-        </div>
-        <button type="button" className="sidebar__logout" onClick={logout}>
-          <Icon name="logout" />
-          Odhlásit se
-        </button>
+          <Icon name="settings" className="sidebar__household-icon" />
+        </NavLink>
       </div>
     </aside>
   );

@@ -970,26 +970,38 @@ textarea.input {
     margin-left: -10px;
   }
 
-  .sidebar__logout {
-    height: 38px;
-    border-radius: 12px;
-    border: 1px solid #e1d5c1;
-    background: transparent;
-    color: var(--muted);
-    font-size: 13.5px;
-    font-weight: 700;
+  .sidebar__household {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 6px;
+    gap: 10px;
+    padding: 10px;
+    margin: 0 -10px;
+    border-radius: 16px;
+    color: var(--ink);
+    text-decoration: none;
+    transition: background 0.15s;
   }
 
-  .sidebar__logout .ms {
-    font-size: 18px;
-  }
-
-  .sidebar__logout:hover {
+  .sidebar__household:hover {
     background: var(--card);
+  }
+
+  .sidebar__household--on,
+  .sidebar__household--on:hover {
+    background: var(--card);
+    box-shadow: inset 0 0 0 1.5px var(--primary);
+  }
+
+  .sidebar__household-icon {
+    margin-left: auto;
+    color: var(--muted-3);
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .sidebar__household--on .sidebar__household-icon,
+  .sidebar__household:hover .sidebar__household-icon {
+    color: var(--primary);
   }
 
   .tabbar {

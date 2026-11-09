@@ -155,16 +155,27 @@ export default function Home() {
             CappyMeal
           </span>
         </div>
-        <button
-          type="button"
-          className="icon-btn"
-          style={{ boxShadow: '0 1px 0 #EDE3D3' }}
-          onClick={() => navigate('/notifications')}
-          aria-label="Upozornění a nastavení"
-        >
-          <Icon name="notifications" size={23} />
-          {alert && <span className="home__bell-dot" />}
-        </button>
+        <div className="row" style={{ gap: 8 }}>
+          <button
+            type="button"
+            className="icon-btn"
+            style={{ boxShadow: '0 1px 0 #EDE3D3' }}
+            onClick={() => navigate('/settings')}
+            aria-label="Nastavení domácnosti"
+          >
+            <Icon name="settings" size={23} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            style={{ boxShadow: '0 1px 0 #EDE3D3' }}
+            onClick={() => navigate('/notifications')}
+            aria-label="Upozornění"
+          >
+            <Icon name="notifications" size={23} />
+            {alert && <span className="home__bell-dot" />}
+          </button>
+        </div>
       </div>
 
       <div className="stack" style={{ gap: 4 }}>

@@ -10,7 +10,6 @@ const NICK_RE = /^[a-z0-9áčďéěíňóřšťúůýž._-]{3,24}$/;
 const JOIN_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const JOIN_CODE_RE = /^[A-HJ-NP-Z2-9]{8}$/;
 const PRODUCT_ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const BUILTIN_IMAGES = ['pancakes', 'soup'];
 
 /** Error carrying a stable code; index.js converts it to an HttpsError. */
@@ -57,20 +56,6 @@ function validateRegistration(data) {
   if (d.password.length < 10) throw new InputError('Heslo musí mít alespoň 10 znaků.', 'WEAK_PASSWORD');
   if (d.password.length > 128) throw new InputError('Heslo může mít nejvýše 128 znaků.', 'INVALID_PASSWORD');
   return { key, display: capitalizeFirst(typed), password: d.password };
-}
-
-/** Rohlík account e-mail + password. */
-function validateRohlikCredentials(data) {
-  const d = isPlainObject(data) ? data : {};
-  const email = isStr(d.email) ? d.email.trim() : '';
-  const password = isStr(d.password) ? d.password : '';
-  if (!email || email.length > 254 || !EMAIL_RE.test(email)) {
-    throw new InputError('Zadejte platný e-mail k účtu Rohlík.');
-  }
-  if (password.length < 1 || password.length > 200) {
-    throw new InputError('Zadejte heslo k účtu Rohlík.');
-  }
-  return { email, password };
 }
 
 /** 'jana.novakova@gmail.com' -> 'j***@gmail.com' */
@@ -214,7 +199,6 @@ module.exports = {
   loginEmail,
   legacyEmail,
   validateRegistration,
-  validateRohlikCredentials,
   maskEmail,
   normalizeJoinCode,
   validateJoinCode,

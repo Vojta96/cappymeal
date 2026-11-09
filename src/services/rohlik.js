@@ -1,4 +1,4 @@
-// Client wrappers for the Rohlík Cloud Functions (per-household Rohlík account).
+// Client wrappers for the Rohlík Cloud Functions (per-household Rohlík account via OAuth).
 import { callFunction } from './functions';
 
 const LONG = 300000;
@@ -8,7 +8,7 @@ const FILL_CHUNK = 80;
 export const NOT_CONNECTED = 'ROHLIK_NOT_CONNECTED';
 /** Errors after which the household has to (re)connect its Rohlík account in settings. */
 export const needsReconnect = (e) =>
-  !!e && ['ROHLIK_NOT_CONNECTED', 'ROHLIK_AUTH_FAILED', 'ROHLIK_CREDENTIALS_INVALID'].includes(e.reason);
+  !!e && ['ROHLIK_NOT_CONNECTED', 'ROHLIK_AUTH_FAILED', 'ROHLIK_AUTH_EXPIRED'].includes(e.reason);
 
 const chunks = (list, size) => {
   const out = [];
@@ -26,7 +26,10 @@ export function matchItem({ key, name, amounts }) {
 }
 
 export const getRohlikStatus = () => callFunction('rohlikStatus', undefined, LONG);
-export const connectRohlik = (email, password) => callFunction('rohlikConnect', { email, password }, LONG);
+/** Step 1 of the OAuth connection (owner): { authUrl, redirectUri }. */
+export const startRohlikOAuth = () => callFunction('rohlikOAuthStart');
+/** Step 2: the URL the owner copied from the address bar after the Rohlík login. */
+export const finishRohlikOAuth = (redirectUrl) => callFunction('rohlikOAuthFinish', { redirectUrl }, LONG);
 export const disconnectRohlik = () => callFunction('rohlikDisconnect');
 
 export async function matchProducts(items) {

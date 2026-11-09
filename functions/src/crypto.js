@@ -5,7 +5,8 @@
 
 const crypto = require('crypto');
 
-const VERSION = 1;
+// Record versions: 1 = legacy e-mail/password (no longer usable), 2 = OAuth tokens.
+const VERSIONS = [1, 2];
 
 function parseKey(keyB64) {
   const key = Buffer.from(String(keyB64 || '').trim(), 'base64');
@@ -14,14 +15,14 @@ function parseKey(keyB64) {
 }
 
 /** obj -> { v, iv, tag, ct } (base64 strings) */
-function encryptJson(obj, keyB64, aad) {
+function encryptJson(obj, keyB64, aad, version = 2) {
   const key = parseKey(keyB64);
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   if (aad) cipher.setAAD(Buffer.from(String(aad), 'utf8'));
   const ct = Buffer.concat([cipher.update(JSON.stringify(obj), 'utf8'), cipher.final()]);
   return {
-    v: VERSION,
+    v: version,
     iv: iv.toString('base64'),
     tag: cipher.getAuthTag().toString('base64'),
     ct: ct.toString('base64'),
@@ -29,7 +30,7 @@ function encryptJson(obj, keyB64, aad) {
 }
 
 function decryptJson(rec, keyB64, aad) {
-  if (!rec || rec.v !== VERSION || !rec.iv || !rec.tag || !rec.ct) {
+  if (!rec || !VERSIONS.includes(rec.v) || !rec.iv || !rec.tag || !rec.ct) {
     throw new Error('Unsupported credential record');
   }
   const key = parseKey(keyB64);

@@ -95,7 +95,7 @@ export default function Household() {
           </div>
           <div>
             <div className="hh-option__title">Připojit se kódem</div>
-            <div className="hh-option__text">Kód najde partner(ka) v aplikaci v Upozorněních.</div>
+            <div className="hh-option__text">Kód najde partner(ka) v aplikaci v Nastavení.</div>
           </div>
         </div>
         <input

@@ -190,12 +190,12 @@ const toolCache = new WeakMap();
 const MCP_URL = 'https://mcp.rohlik.cz/mcp';
 const TIMEOUT_MS = 30000;
 
-/** Opens an MCP session with the household's own credentials. Never log them. */
-async function connect(email, pass) {
+/** Opens an MCP session with the household's OAuth access token. Never log it. */
+async function connect(accessToken) {
   const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
   const { StreamableHTTPClientTransport } = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
   const transport = new StreamableHTTPClientTransport(new URL(MCP_URL), {
-    requestInit: { headers: { 'rhl-email': email, 'rhl-pass': pass } },
+    requestInit: { headers: { Authorization: `Bearer ${accessToken}` } },
   });
   const client = new Client({ name: 'cappymeal', version: '1.0.0' });
   await client.connect(transport, { timeout: TIMEOUT_MS });

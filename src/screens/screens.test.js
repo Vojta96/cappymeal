@@ -15,6 +15,7 @@ import RecipeEdit from './RecipeEdit';
 import Cart from './Cart';
 import CartDone from './CartDone';
 import Notifications from './Notifications';
+import Settings from './Settings';
 import Login from './Login';
 import AppLayout from '../components/AppLayout';
 
@@ -32,7 +33,12 @@ const mockCandidates = [1, 2, 3].map((n) => ({
 }));
 jest.mock('../services/rohlik', () => ({
   getRohlikStatus: () => Promise.resolve({ connected: true, toolCount: 0 }),
-  connectRohlik: () => Promise.resolve({ connected: true }),
+  startRohlikOAuth: () =>
+    Promise.resolve({
+      authUrl: 'https://identity.rohlik.cz/oauth2/authorize?x=1',
+      redirectUri: 'http://127.0.0.1:8976/rohlik-callback',
+    }),
+  finishRohlikOAuth: () => Promise.resolve({ connected: true, emailMasked: 'v***@gmail.com' }),
   disconnectRohlik: () => Promise.resolve({ connected: false }),
   needsReconnect: () => false,
   matchProducts: (items) =>
@@ -114,7 +120,7 @@ const household = {
   updateRegular: noop,
   deleteRegular: noop,
 };
-const auth = { user: { uid: 'u1' }, nickname: 'vojta', login: noop, register: noop, logout: noop };
+const auth = { user: { uid: 'u1' }, nickname: 'Vojta', login: noop, register: noop, logout: noop };
 
 function renderAt(path, element, routePath = path, hh = household) {
   return render(
@@ -209,27 +215,56 @@ test('Hotovo', () => {
   expect(screen.getByText('Hotovo')).toBeInTheDocument();
 });
 
-test('Upozornění', async () => {
+test('Upozornění – jen seznam', () => {
   renderAt('/notifications', <Notifications />);
-  expect(await screen.findByText('Tento prohlížeč upozornění nepodporuje.', { exact: false })).toBeInTheDocument();
-  expect(screen.getByText('ABCD2345')).toBeInTheDocument();
   expect(screen.getByText('Jana přidal(a) oběd')).toBeInTheDocument();
-  expect(screen.getByText('Účet Rohlík')).toBeInTheDocument();
-  expect(screen.getByText('v***@gmail.com')).toBeInTheDocument();
+  expect(screen.getByText('Otevřít nastavení')).toBeInTheDocument();
+  expect(screen.getByLabelText('Nastavení')).toBeInTheDocument();
+  expect(screen.queryByText('ABCD2345')).toBeNull();
+  expect(screen.queryByText('Čas připomínky')).toBeNull();
+});
+
+test('Nastavení – zakladatel', async () => {
+  renderAt('/settings', <Settings />);
+  expect(await screen.findByText('Tento prohlížeč upozornění nepodporuje.', { exact: false })).toBeInTheDocument();
+  ['Domácnost', 'Účet Rohlík', 'Připomínky', 'Účet', 'Čas připomínky', 'Odhlásit se'].forEach((t) =>
+    expect(screen.getByText(t)).toBeInTheDocument(),
+  );
+  expect(screen.getByText('ABCD2345')).toBeInTheDocument();
+  expect(screen.getByText('jako v***@gmail.com')).toBeInTheDocument();
   expect(screen.getByText('Odpojit')).toBeInTheDocument();
   expect(screen.getByLabelText('Odebrat Jana')).toBeInTheDocument();
   expect(screen.getByLabelText('Vygenerovat nový kód')).toBeInTheDocument();
 });
 
-test('Upozornění – člen bez vlastnictví', () => {
-  renderAt('/notifications', <Notifications />, '/notifications', {
+test('Nastavení – připojení Rohlíku přes OAuth', async () => {
+  const original = window.open;
+  window.open = () => null; // popup blocked -> the link fallback is shown
+  try {
+    renderAt('/settings', <Settings />, '/settings', { ...household, rohlik: { connected: false, needsReconnect: true } });
+    expect(screen.getByText('Přihlášení k Rohlíku vypršelo', { exact: false })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Znovu se přihlásit přes Rohlík'));
+    expect(await screen.findByText('Dokončit připojení')).toBeInTheDocument();
+    expect(screen.getByText('Okno se neotevřelo? Otevřít přihlášení')).toHaveAttribute(
+      'href',
+      'https://identity.rohlik.cz/oauth2/authorize?x=1',
+    );
+    fireEvent.click(screen.getByText('Dokončit připojení'));
+    expect(screen.getByText('Vložte adresu, na kterou vás Rohlík přesměroval.')).toBeInTheDocument();
+  } finally {
+    window.open = original;
+  }
+});
+
+test('Nastavení – člen bez vlastnictví', () => {
+  renderAt('/settings', <Settings />, '/settings', {
     ...household,
     isOwner: false,
     owner: 'u2',
     rohlik: null,
   });
   expect(screen.getByText('Nepřipojeno')).toBeInTheDocument();
-  expect(screen.queryByText('Připojit')).toBeNull();
+  expect(screen.queryByText('Přihlásit se přes Rohlík')).toBeNull();
   expect(screen.queryByLabelText('Odebrat Jana')).toBeNull();
   expect(screen.queryByLabelText('Vygenerovat nový kód')).toBeNull();
 });
@@ -278,6 +313,8 @@ describe('desktop layout (>= 1024px)', () => {
     expect(screen.getByText('Procházkovi')).toBeInTheDocument();
     expect(screen.getByText('2 členové')).toBeInTheDocument();
     expect(screen.getByText('Upozornění')).toBeInTheDocument();
+    expect(screen.getByLabelText('Nastavení domácnosti')).toHaveAttribute('href', '/settings');
+    expect(screen.queryByText('Odhlásit se')).toBeNull();
     expect(screen.getByText('Obsah')).toBeInTheDocument();
   });
 

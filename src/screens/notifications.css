@@ -71,18 +71,6 @@
   flex-shrink: 0;
 }
 
-.rohlik-acc__icon {
-  background: var(--success-bg);
-  color: var(--success);
-}
-
-.rohlik-acc__form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px 0;
-}
-
 .push-box {
   display: flex;
   flex-direction: column;
@@ -188,11 +176,5 @@
     width: auto;
     align-self: flex-start;
     padding: 0 20px;
-  }
-
-  .notif-side .rohlik-acc__form .btn {
-    width: auto;
-    align-self: flex-start;
-    padding: 0 24px;
   }
 }

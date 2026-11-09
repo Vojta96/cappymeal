@@ -162,6 +162,7 @@ export default function Cart() {
 
   const connected = !!(rohlik && rohlik.connected);
   const mustConnect = !connected || needsReconnect(error);
+  const reconnect = (!connected && !!(rohlik && rohlik.needsReconnect)) || (connected && needsReconnect(error));
 
   const days = useMemo(
     () => (daysSel || pendingDays).filter((k) => horizon.includes(k)).sort(),
@@ -322,17 +323,17 @@ export default function Cart() {
         </div>
         <div className="stack" style={{ gap: 3 }}>
           <div className="cart__fallback-title">
-            {connected ? 'Účet Rohlík je potřeba připojit znovu' : 'Připojte účet Rohlík'}
+            {reconnect ? 'Účet Rohlík je potřeba připojit znovu' : 'Připojte účet Rohlík'}
           </div>
           <div className="cart__fallback-text">
-            {connected && errorText ? `${errorText} ` : ''}
+            {reconnect && errorText ? `${errorText} ` : ''}
             Aby šel nákup vložit rovnou do košíku, připojte v Nastavení účet Rohlík vaší domácnosti. Mezitím si
             seznam můžete zkopírovat a objednat ručně.
           </div>
         </div>
       </div>
       <div className="cart__fallback-actions">
-        <button type="button" className="btn btn--sm" onClick={() => navigate('/notifications')}>
+        <button type="button" className="btn btn--sm" onClick={() => navigate('/settings')}>
           <Icon name="settings" size={19} />
           Otevřít nastavení
         </button>

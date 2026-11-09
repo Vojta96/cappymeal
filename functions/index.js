@@ -11,12 +11,13 @@ const rem = require('./src/reminders');
 const v = require('./src/validate');
 const enc = require('./src/crypto');
 const rl = require('./src/rateLimit');
+const oauth = require('./src/rohlikOAuth');
 
 const DB_URL = 'https://cappymeal-go-default-rtdb.europe-west1.firebasedatabase.app';
 admin.initializeApp({ databaseURL: DB_URL });
 setGlobalOptions({ region: 'europe-west1', maxInstances: 3 });
 
-// Only secret: key for the per-household Rohlík credentials (base64 of 32 random bytes).
+// Only secret: key for the per-household Rohlík OAuth tokens (base64 of 32 random bytes).
 const ROHLIK_ENC_KEY = defineSecret('ROHLIK_ENC_KEY');
 
 const CALLABLE = { maxInstances: 3 };
@@ -289,36 +290,163 @@ exports.removeMember = onCall(CALLABLE, handle('removeMember', async (request) =
   return { ok: true, code };
 }));
 
-// ---------- Rohlík (per-household credentials) ----------
+// ---------- Rohlík (per-household OAuth tokens) ----------
+
+const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
 const isAuthError = (e) => {
   const msg = String((e && e.message) || '');
-  return (e && (e.code === 401 || e.code === 403)) || /\b(401|403)\b|unauthori[sz]ed|forbidden/i.test(msg);
+  return (e && (e.code === 401 || e.code === 403)) || /\b(401|403)\b|unauthori[sz]ed|forbidden|invalid_token/i.test(msg);
 };
 
-async function loadCredentials(hid) {
-  const rec = (await db().ref(`rohlikCredentials/${hid}`).get()).val();
+const expiredError = () => fail(
+  'failed-precondition',
+  'Přihlášení k Rohlíku vypršelo. Připojte účet znovu v Nastavení.',
+  'ROHLIK_AUTH_EXPIRED',
+);
+
+/** The household must reconnect: drop tokens, keep a public hint for the UI. */
+async function markExpired(hid) {
+  const pub = (await db().ref(`households/${hid}/rohlik`).get()).val() || {};
+  await db().ref().update({
+    [`rohlikCredentials/${hid}`]: null,
+    [`households/${hid}/rohlik`]: {
+      connected: false,
+      needsReconnect: true,
+      emailMasked: pub.emailMasked || null,
+      method: 'oauth',
+      by: pub.by || null,
+      connectedAt: pub.connectedAt || null,
+    },
+  });
+}
+
+/** The single dynamically registered public OAuth client (lazily, guarded against double registration). */
+async function getOAuthClient() {
+  const ref = db().ref('rohlikOAuthClient');
+  const want = oauth.CONFIG.REDIRECT_URI;
+  const usable = (c) => c && c.client_id && c.redirect_uri === want;
+  for (let i = 0; i < 30; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    const cur = (await ref.get()).val();
+    if (usable(cur)) return cur;
+    const now = Date.now();
+    // eslint-disable-next-line no-await-in-loop
+    const claim = await ref.transaction((c) => {
+      if (usable(c)) return undefined;
+      if (c && c.lockedAt && now - c.lockedAt < 30000) return undefined;
+      return { lockedAt: now };
+    });
+    if (claim.committed) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const reg = await oauth.registerClient();
+        const rec = { client_id: reg.client_id, redirect_uri: want, registeredAt: Date.now() };
+        // eslint-disable-next-line no-await-in-loop
+        await ref.set(rec);
+        return rec;
+      } catch (e) {
+        // eslint-disable-next-line no-await-in-loop
+        await ref.set(null);
+        throw e;
+      }
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await sleep(500);
+  }
+  throw new Error('OAuth client registration busy');
+}
+
+/** Decrypted OAuth record { access_token, refresh_token, expiresAt, scope } or throws. */
+async function loadTokens(hid, rec) {
   if (!rec) throw notConnected();
+  if (rec.v !== 2) {
+    // Legacy e-mail/password record – Rohlík no longer accepts it.
+    await markExpired(hid);
+    throw expiredError();
+  }
   try {
     return enc.decryptJson(rec, ROHLIK_ENC_KEY.value(), hid);
   } catch (e) {
     console.error('Rohlik credentials unusable for household', hid, (e && e.message) || '');
-    throw fail(
-      'failed-precondition',
-      'Uložené přihlášení k Rohlíku nejde použít. Připojte účet znovu v Nastavení.',
-      'ROHLIK_CREDENTIALS_INVALID',
-    );
+    await markExpired(hid);
+    throw expiredError();
   }
 }
 
-async function withClient(creds, fn) {
+async function saveTokens(hid, tokens, by) {
+  await db().ref(`rohlikCredentials/${hid}`).set({
+    ...enc.encryptJson(tokens, ROHLIK_ENC_KEY.value(), hid, 2),
+    updatedAt: Date.now(),
+    by: by || null,
+  });
+}
+
+/** A valid access token for the household; refreshes (one refresher at a time) when it expires within 60 s. */
+async function getAccessToken(hid) {
+  const credRef = db().ref(`rohlikCredentials/${hid}`);
+  for (let attempt = 0; attempt < 20; attempt++) {
+    // eslint-disable-next-line no-await-in-loop
+    const rec = (await credRef.get()).val();
+    // eslint-disable-next-line no-await-in-loop
+    const tokens = await loadTokens(hid, rec);
+    if (!oauth.needsRefresh(tokens)) return tokens.access_token;
+    if (!tokens.refresh_token) {
+      // eslint-disable-next-line no-await-in-loop
+      await markExpired(hid);
+      throw expiredError();
+    }
+    const now = Date.now();
+    // Short lock so concurrent requests do not spend the same (rotating) refresh token twice.
+    // eslint-disable-next-line no-await-in-loop
+    const lock = await credRef.transaction((c) => {
+      if (!c) return undefined;
+      if (c.refreshLock && now - c.refreshLock < 20000) return undefined;
+      return { ...c, refreshLock: now };
+    });
+    if (!lock.committed) {
+      // eslint-disable-next-line no-await-in-loop
+      await sleep(750);
+      continue; // eslint-disable-line no-continue
+    }
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const client = await getOAuthClient();
+      // eslint-disable-next-line no-await-in-loop
+      const res = await oauth.refreshTokens({ clientId: client.client_id, refreshToken: tokens.refresh_token });
+      const next = oauth.tokenRecord(res, Date.now(), tokens.refresh_token);
+      // eslint-disable-next-line no-await-in-loop
+      await saveTokens(hid, next, rec.by); // also clears refreshLock
+      return next.access_token;
+    } catch (e) {
+      console.error('Rohlik token refresh failed:', (e && e.message) || '');
+      if (e instanceof oauth.OAuthError && (e.error === 'invalid_grant' || e.error === 'invalid_client' || e.status === 401)) {
+        // eslint-disable-next-line no-await-in-loop
+        await markExpired(hid);
+        throw expiredError();
+      }
+      // eslint-disable-next-line no-await-in-loop
+      await credRef.child('refreshLock').remove().catch(() => {});
+      throw fail('unavailable', 'Nepodařilo se připojit k Rohlíku. Zkuste to později.', 'ROHLIK_UNAVAILABLE');
+    }
+  }
+  throw fail('unavailable', 'Nepodařilo se připojit k Rohlíku. Zkuste to později.', 'ROHLIK_UNAVAILABLE');
+}
+
+async function requireConnected(hid) {
+  if (!(await db().ref(`rohlikCredentials/${hid}`).get()).exists()) throw notConnected();
+}
+
+async function withClient(hid, fn) {
+  const token = await getAccessToken(hid);
   let client;
   try {
-    client = await rohlik.connect(creds.email, creds.password);
+    client = await rohlik.connect(token);
   } catch (e) {
     console.error('Rohlik connect failed:', (e && e.message) || '');
     if (isAuthError(e)) {
-      throw fail('failed-precondition', 'Rohlík odmítl uložené přihlášení. Připojte účet znovu v Nastavení.', 'ROHLIK_AUTH_FAILED');
+      await markExpired(hid);
+      throw expiredError();
     }
     throw fail('unavailable', 'Nepodařilo se připojit k Rohlíku. Zkuste to později.', 'ROHLIK_UNAVAILABLE');
   }
@@ -329,41 +457,80 @@ async function withClient(creds, fn) {
   }
 }
 
-exports.rohlikConnect = onCall(ROHLIK, handle('rohlikConnect', async (request) => {
+exports.rohlikOAuthStart = onCall(ROHLIK, handle('rohlikOAuthStart', async (request) => {
   const { uid, hid } = await requireOwner(request);
-  const creds = v.validateRohlikCredentials(request.data);
-  await limit(`h/${hid}/rohlikConnect`, 5);
+  await limit(`h/${hid}/rohlikOAuthStart`, 10);
+  const client = await getOAuthClient();
+  const { verifier, challenge } = oauth.createPkce();
+  const state = oauth.randomState();
+  await db().ref(`rohlikOAuthPending/${hid}`).set({
+    verifierEnc: enc.encryptJson({ verifier }, ROHLIK_ENC_KEY.value(), `${hid}:pkce`, 2),
+    state,
+    uid,
+    clientId: client.client_id,
+    redirectUri: client.redirect_uri,
+    createdAt: Date.now(),
+  });
+  return {
+    authUrl: oauth.buildAuthUrl({ clientId: client.client_id, redirectUri: client.redirect_uri, state, challenge }),
+    redirectUri: client.redirect_uri,
+  };
+}));
+
+exports.rohlikOAuthFinish = onCall(ROHLIK, handle('rohlikOAuthFinish', async (request) => {
+  const { uid, hid } = await requireOwner(request);
+  await limit(`h/${hid}/rohlikOAuthFinish`, 10);
+  const pendingRef = db().ref(`rohlikOAuthPending/${hid}`);
+  const pending = (await pendingRef.get()).val();
+  if (oauth.pendingExpired(pending)) {
+    throw fail('failed-precondition', 'Platnost přihlášení vypršela. Začněte znovu tlačítkem „Přihlásit se přes Rohlík“.', 'OAUTH_EXPIRED');
+  }
+  const { code, state } = oauth.parseRedirectUrl(request.data && request.data.redirectUrl, pending.redirectUri);
+  if (!oauth.stateMatches(state, pending.state)) {
+    throw fail('invalid-argument', 'Adresa nepatří k poslednímu přihlášení. Začněte znovu tlačítkem „Přihlásit se přes Rohlík“.', 'OAUTH_STATE');
+  }
+  // The code is single-use: whatever happens next, this attempt is over.
+  await pendingRef.remove();
+  const { verifier } = enc.decryptJson(pending.verifierEnc, ROHLIK_ENC_KEY.value(), `${hid}:pkce`);
+  let res;
+  try {
+    res = await oauth.exchangeCode({ clientId: pending.clientId, code, verifier, redirectUri: pending.redirectUri });
+  } catch (e) {
+    console.warn('Rohlik code exchange failed:', (e && e.message) || '');
+    if (e instanceof oauth.OAuthError && e.status >= 400 && e.status < 500) {
+      throw fail('failed-precondition', 'Přihlašovací kód už neplatí. Začněte připojení znovu.', 'OAUTH_CODE_INVALID');
+    }
+    throw fail('unavailable', 'Rohlík teď neodpovídá. Zkuste to za chvíli.', 'ROHLIK_UNAVAILABLE');
+  }
+  const tokens = oauth.tokenRecord(res, Date.now());
   let client;
   try {
-    client = await rohlik.connect(creds.email, creds.password);
+    client = await rohlik.connect(tokens.access_token);
     const tools = await rohlik.listTools(client);
     if (!tools.length) throw new Error('no tools');
   } catch (e) {
-    console.warn('rohlikConnect verification failed:', (e && e.message) || '');
-    throw fail(
-      'permission-denied',
-      'K Rohlíku se nepodařilo přihlásit. Zkontrolujte e-mail a heslo.',
-      'ROHLIK_AUTH_FAILED',
-    );
+    console.warn('Rohlik MCP verification failed:', (e && e.message) || '');
+    throw fail('failed-precondition', 'Přihlášení proběhlo, ale Rohlík nepovolil přístup k nákupu. Zkuste to znovu.', 'ROHLIK_AUTH_FAILED');
   } finally {
     if (client) { try { await client.close(); } catch (e) { /* ignore */ } }
   }
+  const email = oauth.emailFromIdToken(res.id_token) || (await oauth.fetchUserEmail(tokens.access_token));
+  const emailMasked = email ? v.maskEmail(email) : null;
   const now = Date.now();
-  const emailMasked = v.maskEmail(creds.email);
-  await db().ref().update({
-    [`rohlikCredentials/${hid}`]: {
-      ...enc.encryptJson({ email: creds.email, password: creds.password }, ROHLIK_ENC_KEY.value(), hid),
-      updatedAt: now,
-      by: uid,
-    },
-    [`households/${hid}/rohlik`]: { connected: true, emailMasked, connectedAt: now, by: uid },
-  });
+  await saveTokens(hid, tokens, uid);
+  await db().ref(`households/${hid}/rohlik`).set({ connected: true, emailMasked, connectedAt: now, by: uid, method: 'oauth' });
   return { connected: true, emailMasked };
 }));
 
 exports.rohlikDisconnect = onCall(CALLABLE, handle('rohlikDisconnect', async (request) => {
   const { hid } = await requireOwner(request);
-  await db().ref().update({ [`rohlikCredentials/${hid}`]: null, [`households/${hid}/rohlik`]: null });
+  // Token revocation needs client authentication we do not have (public client) – the user
+  // can revoke access in their Rohlík account; here the tokens are deleted.
+  await db().ref().update({
+    [`rohlikCredentials/${hid}`]: null,
+    [`rohlikOAuthPending/${hid}`]: null,
+    [`households/${hid}/rohlik`]: null,
+  });
   return { connected: false };
 }));
 
@@ -376,9 +543,8 @@ exports.rohlikStatus = onCall(ROHLIK, handle('rohlikStatus', async (request) => 
   ]);
   if (!credSnap.exists()) return { connected: false, emailMasked: null, toolCount: 0 };
   await limit(`h/${hid}/rohlikStatus`, 60);
-  const creds = await loadCredentials(hid);
-  const emailMasked = (pubSnap.val() && pubSnap.val().emailMasked) || v.maskEmail(creds.email);
-  return withClient(creds, async (client) => {
+  const emailMasked = (pubSnap.val() && pubSnap.val().emailMasked) || null;
+  return withClient(hid, async (client) => {
     const tools = await rohlik.listTools(client, { refresh: true });
     const out = { connected: true, emailMasked, toolCount: tools.length };
     if (ownerSnap.val() === uid) out.tools = tools.map((t) => String(t.name));
@@ -389,9 +555,9 @@ exports.rohlikStatus = onCall(ROHLIK, handle('rohlikStatus', async (request) => 
 exports.rohlikMatch = onCall(ROHLIK, handle('rohlikMatch', async (request) => {
   const { hid } = await requireMember(request);
   const items = v.validateMatchItems(request.data);
-  const creds = await loadCredentials(hid);
+  await requireConnected(hid);
   await limit(`h/${hid}/rohlikMatch`, 30);
-  return withClient(creds, async (client) => {
+  return withClient(hid, async (client) => {
     const results = new Array(items.length);
     let next = 0;
     async function worker() {
@@ -416,9 +582,9 @@ exports.rohlikMatch = onCall(ROHLIK, handle('rohlikMatch', async (request) => {
 exports.rohlikFillCart = onCall(ROHLIK, handle('rohlikFillCart', async (request) => {
   const { uid, hid, nickname } = await requireMember(request);
   const { days, products } = v.validateFillCart(request.data);
-  const creds = await loadCredentials(hid);
+  await requireConnected(hid);
   await limit(`h/${hid}/rohlikFillCart`, 10);
-  const out = await withClient(creds, (client) => rohlik.addToCart(client, products));
+  const out = await withClient(hid, (client) => rohlik.addToCart(client, products));
   if (out.failed.length) {
     console.warn('rohlikFillCart: failed items', out.failed.length, (out.failed[0] && out.failed[0].error) || '');
   }

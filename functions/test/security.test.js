@@ -9,7 +9,7 @@ const KEY = crypto.randomBytes(32).toString('base64');
 
 test('crypto round-trip with household binding', () => {
   const rec = enc.encryptJson({ email: 'a@b.cz', password: 'tajné heslo' }, KEY, 'hid1');
-  assert.strictEqual(rec.v, 1);
+  assert.strictEqual(rec.v, 2);
   assert.ok(rec.iv && rec.tag && rec.ct);
   assert.ok(!rec.ct.includes('tajn'));
   assert.deepStrictEqual(enc.decryptJson(rec, KEY, 'hid1'), { email: 'a@b.cz', password: 'tajné heslo' });
@@ -25,7 +25,7 @@ test('crypto rejects wrong key, wrong household and tampering', () => {
   ct[0] ^= 1;
   assert.throws(() => enc.decryptJson({ ...rec, ct: ct.toString('base64') }, KEY, 'hid1'));
   assert.throws(() => enc.parseKey(crypto.randomBytes(16).toString('base64')));
-  assert.throws(() => enc.decryptJson({ v: 2 }, KEY, 'hid1'));
+  assert.throws(() => enc.decryptJson({ v: 3, iv: 'a', tag: 'b', ct: 'c' }, KEY, 'hid1'));
 });
 
 test('rate limiter window logic', () => {
@@ -84,14 +84,7 @@ test('nickname rules for new accounts', () => {
   assert.strictEqual(v.normalizeNickname(' VoJta '), 'vojta');
 });
 
-test('rohlik credentials validation and masking', () => {
-  assert.deepStrictEqual(v.validateRohlikCredentials({ email: ' jan@gmail.com ', password: 'p' }), {
-    email: 'jan@gmail.com', password: 'p',
-  });
-  assert.throws(() => v.validateRohlikCredentials({ email: 'jan', password: 'p' }), v.InputError);
-  assert.throws(() => v.validateRohlikCredentials({ email: `${'a'.repeat(250)}@b.cz`, password: 'p' }), v.InputError);
-  assert.throws(() => v.validateRohlikCredentials({ email: 'jan@gmail.com', password: '' }), v.InputError);
-  assert.throws(() => v.validateRohlikCredentials({ email: 'jan@gmail.com', password: 'x'.repeat(201) }), v.InputError);
+test('email masking', () => {
   assert.strictEqual(v.maskEmail('jana.novakova@gmail.com'), 'j***@gmail.com');
   assert.strictEqual(v.maskEmail('bad'), '***');
 });

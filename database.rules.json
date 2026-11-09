@@ -25,6 +25,8 @@
     },
 
     "rohlikCredentials": { ".read": false, ".write": false },
+    "rohlikOAuthClient": { ".read": false, ".write": false },
+    "rohlikOAuthPending": { ".read": false, ".write": false },
     "rateLimits": { ".read": false, ".write": false },
     "householdIndex": { ".read": false, ".write": false },
 

@@ -15,6 +15,7 @@ import RecipeEdit from './screens/RecipeEdit';
 import Cart from './screens/Cart';
 import CartDone from './screens/CartDone';
 import Notifications from './screens/Notifications';
+import Settings from './screens/Settings';
 
 function Gate() {
   const { user, loading, profileLoading, householdId } = useAuth();
@@ -53,6 +54,7 @@ function Gate() {
             <Route path="/cart" element={<Cart />} />
             <Route path="/cart/done" element={<CartDone />} />
             <Route path="/notifications" element={<Notifications />} />
+            <Route path="/settings" element={<Settings />} />
           </Route>
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="/household" element={<Navigate to="/" replace />} />
