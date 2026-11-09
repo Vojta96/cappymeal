@@ -15,6 +15,9 @@ import {
   shoppingListText,
 } from '../lib/meals';
 import { fillCart, matchProducts, needsReconnect } from '../services/rohlik';
+import ProductCarousel from '../components/ProductCarousel';
+import { formatQty, leftoverText, needForServer, presetQty, sumNeed } from '../lib/quantity';
+import { arrangeCandidates, shopPrefs } from '../lib/shop';
 import { useIsDesktop } from '../hooks/useMediaQuery';
 import './cart.css';
 
@@ -41,28 +44,132 @@ async function copyText(text) {
   }
 }
 
-function ProductImg({ url, className = 'cart__pimg' }) {
-  return (
-    <div className={className}>
-      {url ? <img src={url} alt="" loading="lazy" /> : <Icon name="shopping_basket" size={22} />}
-    </div>
-  );
+/** "pro: Bolognese, Kaše" / "Pravidelná položka" */
+function mealsText(item) {
+  if (item.regular) return 'Pravidelná položka';
+  if (!item.meals || !item.meals.length) return '';
+  return `pro: ${item.meals.join(', ')}`;
 }
 
-/** One shopping item with its Rohlík variants (up to 5) shown directly as cards. */
-function MatchedItem({ item, candidates, pick, busy, onPick }) {
-  const prod = !pick.skip && candidates[pick.idx];
+/** One shopping item: header (name, need, meals, "Hledat jinak", "Přeskočit"), variant carousel, quantity. */
+function ShopItem({ item, need, entry, pick, busy, loading, onPick, onSearch }) {
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const options = (entry && entry.options) || [];
+  const prod = !pick.skip && pick.idx >= 0 ? options[pick.idx] : null;
+  const sub = [need ? `Potřeba: ${formatQty(need)}` : '', mealsText(item)].filter(Boolean).join(' · ');
+  const hints = options.map((o, i) => leftoverText(need, o, i === pick.idx ? pick.qty : presetQty(need, o)));
+  const price = prod && Number(prod.price) > 0 ? Number(prod.price) : null;
+
+  const submit = (e) => {
+    e.preventDefault();
+    const q = query.trim();
+    if (!q || loading) return;
+    onSearch(q);
+    setSearchOpen(false);
+  };
+
   return (
-    <div className={`cart__item${prod ? '' : ' cart__item--skip'}`}>
-      <div className="cart__item-head">
-        <div className="list-row__body">
-          <div className="list-row__title">
+    <div className={`shop-item${prod ? '' : ' shop-item--skip'}`}>
+      <div className="shop-item__head">
+        <div className="shop-item__body">
+          <div className="shop-item__title">
             {item.name}
             {item.regular && <span className="cart__reg-badge">pravidelná</span>}
           </div>
-          {item.amounts.length > 0 && <div className="list-row__sub ellipsis">{item.amounts.join(' + ')}</div>}
+          {sub && <div className="shop-item__sub">{sub}</div>}
         </div>
-        {prod && (
+        <button
+          type="button"
+          className={`shop-item__act${searchOpen ? ' shop-item__act--on' : ''}`}
+          onClick={() => {
+            setSearchOpen((o) => !o);
+            if (!query) setQuery((entry && entry.query) || item.name);
+          }}
+          aria-expanded={searchOpen}
+          disabled={busy || loading}
+          title="Hledat jinak"
+        >
+          <Icon name="manage_search" size={18} />
+          <span className="shop-item__act-label">Hledat jinak</span>
+        </button>
+        <button
+          type="button"
+          className={`shop-item__act shop-item__skip${pick.skip ? ' shop-item__act--on' : ''}`}
+          onClick={() => {
+            if (!pick.skip) {
+              onPick({ skip: true });
+              return;
+            }
+            const keep = pick.idx >= 0 && options[pick.idx] && options[pick.idx].available !== false;
+            const i = keep ? pick.idx : options.findIndex((o) => o.available !== false);
+            if (i >= 0) onPick({ skip: false, idx: i, qty: keep ? pick.qty : presetQty(need, options[i]) });
+          }}
+          aria-pressed={!!pick.skip}
+          disabled={busy || loading || (pick.skip && !options.some((o) => o.available !== false))}
+        >
+          <Icon name="block" size={18} />
+          Přeskočit
+        </button>
+      </div>
+
+      {searchOpen && (
+        <form className="shop-item__search" onSubmit={submit}>
+          <input
+            className="input"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            maxLength={60}
+            placeholder="Co hledat na Rohlíku"
+            aria-label={`Hledat jinak – ${item.name}`}
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus
+          />
+          <button type="submit" className="btn btn--sm btn--auto" disabled={!query.trim() || loading}>
+            Hledat
+          </button>
+        </form>
+      )}
+
+      {entry && entry.note === 'unavailable' && (
+        <div className="shop-item__note">
+          <Icon name="info" size={17} />
+          Vaše volba není dostupná – vybrali jsme jinou variantu.
+        </div>
+      )}
+
+      {loading ? (
+        <div className="shop-item__loading">
+          <Spinner small />
+          Hledám na Rohlíku…
+        </div>
+      ) : options.length > 0 ? (
+        <ProductCarousel
+          options={options}
+          selected={pick.skip ? -1 : pick.idx}
+          onSelect={(i) => onPick({ idx: i, skip: false, qty: presetQty(need, options[i]) })}
+          label={`Varianty – ${item.name}`}
+          hints={hints}
+          disabled={busy}
+        />
+      ) : (
+        <div className="cart__none">Rohlík nenašel žádný vhodný produkt. Zkuste „Hledat jinak“.</div>
+      )}
+
+      {prod && !loading && (
+        <div className="shop-item__foot">
+          <div className="shop-item__total">
+            {price != null ? (
+              <>
+                <span>
+                  {pick.qty} × {prod.priceText || formatKc(price)}
+                </span>
+                <strong>{formatKc(price * pick.qty)}</strong>
+              </>
+            ) : (
+              <span>{prod.priceText ? `${pick.qty} × ${prod.priceText}` : `${pick.qty} ks`}</span>
+            )}
+          </div>
           <div className="stepper">
             <button
               type="button"
@@ -72,7 +179,7 @@ function MatchedItem({ item, candidates, pick, busy, onPick }) {
             >
               <Icon name="remove" size={18} />
             </button>
-            <span>{pick.qty}</span>
+            <span aria-live="polite">{pick.qty}</span>
             <button
               type="button"
               onClick={() => onPick({ qty: pick.qty + 1 })}
@@ -82,46 +189,7 @@ function MatchedItem({ item, candidates, pick, busy, onPick }) {
               <Icon name="add" size={18} />
             </button>
           </div>
-        )}
-      </div>
-      {candidates.length > 0 ? (
-        <div className="variants" role="radiogroup" aria-label={`Varianty – ${item.name}`}>
-          {candidates.map((c, i) => {
-            const on = !pick.skip && pick.idx === i;
-            return (
-              <button
-                type="button"
-                key={c.productId}
-                role="radio"
-                aria-checked={on}
-                className={`variant${on ? ' variant--on' : ''}`}
-                onClick={() => onPick({ idx: i, skip: false })}
-                disabled={busy}
-              >
-                {on && <Icon name="check_circle" size={20} className="variant__check" />}
-                <ProductImg url={c.imageUrl} className="variant__img" />
-                <div className="variant__name">{c.name}</div>
-                <div className="variant__meta">
-                  <span className="variant__price">{c.priceText || (c.price != null ? formatKc(c.price) : '')}</span>
-                  {c.unit && <span className="variant__unit">{c.unit}</span>}
-                </div>
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            role="radio"
-            aria-checked={!!pick.skip}
-            className={`variant variant--skip${pick.skip ? ' variant--on' : ''}`}
-            onClick={() => onPick({ skip: true })}
-            disabled={busy}
-          >
-            <Icon name="block" size={22} />
-            Přeskočit
-          </button>
         </div>
-      ) : (
-        <div className="cart__none">Rohlík nenašel žádný vhodný produkt.</div>
       )}
     </div>
   );
@@ -140,6 +208,9 @@ export default function Cart() {
     statusOf,
     togglePantry,
     setOrderStatus,
+    settings,
+    productPrefs,
+    saveProductPrefs,
   } = useHousehold();
   const location = useLocation();
   const navigate = useNavigate();
@@ -147,8 +218,9 @@ export default function Cart() {
 
   const [daysSel, setDaysSel] = useState(() => (location.state && location.state.days) || null);
   const [step, setStep] = useState('list'); // list | matching | matched | filling
-  const [results, setResults] = useState({}); // key -> candidates[]
+  const [results, setResults] = useState({}); // key -> { options, note, query } (arranged candidates)
   const [picks, setPicks] = useState({}); // key -> { idx, qty, skip }
+  const [itemBusy, setItemBusy] = useState({}); // key -> true while "Hledat jinak" runs
   const [error, setError] = useState(null); // CallError | Error | null
   const [regSel, setRegSel] = useState({}); // regular id -> bool (this shopping only)
   const [regSheet, setRegSheet] = useState(null); // 'add' | 'manage' | null
@@ -187,11 +259,21 @@ export default function Cart() {
   const home = all.filter((it) => isInPantry(it, pantry));
   // Regulars are never auto-marked as "Mám doma"; they go first.
   const buy = [...chosenRegulars, ...buyIngredients];
+  // Summed need per item in base units ("Potřeba: 450 g"); null when unknown / incompatible.
+  const needs = useMemo(() => {
+    const out = {};
+    [...allRegulars, ...all].forEach((it) => {
+      out[it.key] = sumNeed(it.amounts, it.name);
+    });
+    return out;
+  }, [all, allRegulars]);
+  const shop = shopPrefs(settings);
 
   const resetMatch = () => {
     setStep('list');
     setResults({});
     setPicks({});
+    setItemBusy({});
     setError(null);
   };
 
@@ -206,19 +288,46 @@ export default function Cart() {
     if (step !== 'list') resetMatch();
   };
 
+  // A custom "Hledat jinak" query asks for alternatives: the remembered product is not forced back in
+  // (and the call stays a single search).
+  const requestFor = (it, query) => {
+    const pref = !query && productPrefs && productPrefs[it.key];
+    return {
+      key: it.key,
+      name: it.name,
+      amounts: it.amounts,
+      need: needForServer(needs[it.key]),
+      query,
+      preferredProductId: pref ? pref.productId : undefined,
+      preferredName: pref ? pref.name : undefined,
+    };
+  };
+
+  /** Server result → arranged entry + preset pick (remembered product first, packs from the need). */
+  const applyResult = (it, r, custom = false) => {
+    const pref = custom ? null : productPrefs && productPrefs[it.key];
+    const arranged = arrangeCandidates((r && r.candidates) || [], pref, r && r.preferred);
+    const sel = arranged.selected;
+    const entry = { options: arranged.options, note: arranged.note, query: (r && r.query) || '' };
+    const pick = { idx: sel, qty: sel >= 0 ? presetQty(needs[it.key], arranged.options[sel]) : 1, skip: sel < 0 };
+    return { entry, pick };
+  };
+
   const findOnRohlik = async () => {
     setError(null);
     setStep('matching');
     try {
-      const res = await matchProducts(buy.map((it) => ({ key: it.key, name: it.name, amounts: it.amounts })));
+      const res = await matchProducts(buy.map((it) => requestFor(it)), shop);
+      const byKey = {};
+      ((res && res.results) || []).forEach((r) => {
+        byKey[r.key] = r;
+      });
       const map = {};
       const p = {};
-      ((res && res.results) || []).forEach((r) => {
-        map[r.key] = (r.candidates || []).slice(0, 5);
-      });
       buy.forEach((it) => {
-        const c = map[it.key] || [];
-        p[it.key] = { idx: 0, qty: 1, skip: c.length === 0 };
+        const { entry, pick } = applyResult(it, byKey[it.key]);
+        map[it.key] = entry;
+        p[it.key] = pick;
       });
       setResults(map);
       setPicks(p);
@@ -229,11 +338,28 @@ export default function Cart() {
     }
   };
 
+  /** "Hledat jinak": one rohlikMatch call for a single item with the user's query. */
+  const searchItem = async (it, query) => {
+    setItemBusy((b) => ({ ...b, [it.key]: true }));
+    try {
+      const res = await matchProducts([requestFor(it, query)], shop);
+      const r = ((res && res.results) || []).find((x) => x.key === it.key);
+      const { entry, pick } = applyResult(it, r || { candidates: [], query }, true);
+      setResults((m) => ({ ...m, [it.key]: entry }));
+      setPicks((m) => ({ ...m, [it.key]: pick }));
+    } catch (e) {
+      if (needsReconnect(e)) setError(e);
+      else setToast(e.message || 'Hledání se nepovedlo');
+    } finally {
+      setItemBusy((b) => ({ ...b, [it.key]: false }));
+    }
+  };
+
   const chosen = buy
     .map((it) => {
       const pk = picks[it.key];
-      const c = results[it.key] || [];
-      if (!pk || pk.skip || !c[pk.idx]) return null;
+      const c = (results[it.key] && results[it.key].options) || [];
+      if (!pk || pk.skip || pk.idx < 0 || !c[pk.idx] || c[pk.idx].available === false) return null;
       return { item: it, product: c[pk.idx], qty: pk.qty };
     })
     .filter(Boolean);
@@ -242,6 +368,10 @@ export default function Cart() {
   const toCart = async () => {
     setError(null);
     setStep('filling');
+    // Remember the confirmed variants for next time (best effort, never blocks the cart).
+    Promise.resolve()
+      .then(() => saveProductPrefs && saveProductPrefs(chosen.map((x) => ({ key: x.item.key, product: x.product }))))
+      .catch(() => {});
     try {
       const res = await fillCart(
         days,
@@ -641,13 +771,16 @@ export default function Cart() {
                     </div>
                     <div className="list-card cart__matched">
                       {buy.map((it) => (
-                        <MatchedItem
+                        <ShopItem
                           key={it.key}
                           item={it}
-                          candidates={results[it.key] || []}
-                          pick={picks[it.key] || { idx: 0, qty: 1, skip: true }}
+                          need={needs[it.key]}
+                          entry={results[it.key]}
+                          pick={picks[it.key] || { idx: -1, qty: 1, skip: true }}
                           busy={busy}
+                          loading={!!itemBusy[it.key]}
                           onPick={(patch) => setPick(it.key, patch)}
+                          onSearch={(q) => searchItem(it, q)}
                         />
                       ))}
                     </div>

@@ -135,7 +135,29 @@
           "remindDaily": { ".validate": "newData.isBoolean()" },
           "remindBoth": { ".validate": "newData.isBoolean()" },
           "remindHour": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 23 && newData.val() % 1 === 0" },
+          "shop": {
+            "preferLight": { ".validate": "newData.isBoolean()" },
+            "preferBio": { ".validate": "newData.isBoolean()" },
+            "sort": { ".validate": "newData.isString() && (newData.val() === 'best' || newData.val() === 'unitPrice')" },
+            "$other": { ".validate": false }
+          },
           "$other": { ".validate": false }
+        },
+
+        "productPrefs": {
+          "$key": {
+            ".write": "auth != null && root.child('households').child($hid).child('members').child(auth.uid).exists()",
+            ".validate": "$key.length <= 120 && newData.hasChildren(['productId', 'name', 'count', 'lastAt', 'by'])",
+            "productId": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 40" },
+            "name": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 200" },
+            "imageUrl": { ".validate": "newData.isString() && newData.val().length <= 500 && newData.val().beginsWith('https://')" },
+            "priceText": { ".validate": "newData.isString() && newData.val().length <= 200" },
+            "packText": { ".validate": "newData.isString() && newData.val().length <= 200" },
+            "count": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 1000000 && newData.val() % 1 === 0" },
+            "lastAt": { ".validate": "newData.isNumber()" },
+            "by": { ".validate": "newData.val() === auth.uid" },
+            "$other": { ".validate": false }
+          }
         },
 
         "activity": {

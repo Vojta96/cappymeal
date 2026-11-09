@@ -24,11 +24,13 @@ import { dateKey, dayInfo, horizonKeys } from '../lib/dates';
 import { SLOT_BY_KEY, dayStatus, buildAlert } from '../lib/meals';
 import { DEFAULT_SETTINGS, ensureHouseholdMeta, seedRecipeRecords } from '../services/household';
 import { capitalizeFirst } from '../lib/text';
+import { prefUpdates } from '../lib/shop';
 
 export const HouseholdContext = createContext(null);
 
 const SUBTREES = [
   'recipes', 'plan', 'orders', 'pantry', 'settings', 'members', 'joinCode', 'name', 'owner', 'rohlik', 'regulars',
+  'productPrefs',
 ];
 
 // Recipe photos: householdPhotos/{hid}/{rid}; households/{hid}/photos/{rid} is the read-only legacy location.
@@ -92,6 +94,7 @@ export function HouseholdProvider({ hid, children }) {
   const pantry = useMemo(() => data.pantry || {}, [data.pantry]);
   const members = useMemo(() => data.members || {}, [data.members]);
   const regulars = useMemo(() => data.regulars || {}, [data.regulars]);
+  const productPrefs = useMemo(() => data.productPrefs || {}, [data.productPrefs]);
   const settings = useMemo(() => ({ ...DEFAULT_SETTINGS, ...(data.settings || {}) }), [data.settings]);
   const ready = SUBTREES.every((n) => loaded[n]);
   const owner = data.owner || null;
@@ -347,6 +350,17 @@ export function HouseholdProvider({ hid, children }) {
 
   const deleteRegular = useCallback((id) => remove(ref(db, `${base}/regulars/${id}`)), [base]);
 
+  // ---------- remembered product choices (households/{hid}/productPrefs/{ingredientKey}) ----------
+  /** chosen: [{ key, product }] – the variants confirmed with "Vložit do košíku". */
+  const saveProductPrefs = useCallback(
+    (chosen) => {
+      const updates = prefUpdates(chosen, productPrefs, uid, Date.now());
+      if (!Object.keys(updates).length) return Promise.resolve();
+      return update(ref(db, `${base}/productPrefs`), updates);
+    },
+    [base, uid, productPrefs]
+  );
+
   const value = useMemo(
     () => ({
       hid,
@@ -362,6 +376,7 @@ export function HouseholdProvider({ hid, children }) {
       members,
       settings,
       regulars,
+      productPrefs,
       owner,
       isOwner,
       rohlik: data.rohlik || null,
@@ -387,12 +402,13 @@ export function HouseholdProvider({ hid, children }) {
       addRegular,
       updateRegular,
       deleteRegular,
+      saveProductPrefs,
     }),
     [
       hid, uid, nickname, ready, todayKey, horizon, recipes, plan, orders, pantry, members, settings,
       data.joinCode, data.name, activity, alert, pendingDays, statusOf, requestPhoto, photoFor, setMeal, removeMeal,
       saveRecipe, deleteRecipe, replaceRecipesWithSeed, togglePantry, setOrderStatus, clearOrder, updateSettings, updateHouseholdName, logActivity,
-      regulars, owner, isOwner, data.rohlik, addRegular, updateRegular, deleteRegular,
+      regulars, productPrefs, owner, isOwner, data.rohlik, addRegular, updateRegular, deleteRegular, saveProductPrefs,
     ]
   );
 

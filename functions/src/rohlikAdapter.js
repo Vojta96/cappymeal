@@ -1,4 +1,5 @@
 'use strict';
+const quantity = require('./quantity');
 // Adapter for the Rohlík MCP server. Tool names/schemas are not published,
 // so tools are discovered at runtime and arguments built from inputSchema.
 
@@ -27,6 +28,7 @@ function findProp(tool, names) {
   return null;
 }
 
+const SEARCH_LIMIT = 15; // fetch more than we show: some get filtered out
 const QUERY_NAMES = ['query', 'keyword', 'keywords', 'search', 'searchTerm', 'search_term', 'q', 'term', 'text', 'name'];
 const ID_NAMES = ['productId', 'product_id', 'id', 'productIds', 'product_ids'];
 const QTY_NAMES = ['quantity', 'qty', 'amount', 'count'];
@@ -35,7 +37,7 @@ function buildSearchArgs(tool, query) {
   const key = findProp(tool, QUERY_NAMES) || Object.keys(props(tool))[0] || 'query';
   const args = { [key]: query };
   const lim = findProp(tool, ['limit', 'pageSize', 'page_size', 'max_results']);
-  if (lim) args[lim] = 8;
+  if (lim) args[lim] = SEARCH_LIMIT;
   return args;
 }
 
@@ -128,38 +130,170 @@ function pickPrice(o) {
   return { price: null, text: null };
 }
 
+const firstDefined = (o, keys) => {
+  for (const k of keys) if (o[k] !== undefined && o[k] !== null && o[k] !== '') return o[k];
+  return undefined;
+};
+const label = (v) => {
+  if (typeof v === 'string') return v;
+  if (v && typeof v === 'object') return firstDefined(v, ['name', 'title', 'label', 'text', 'type', 'slug', 'code']);
+  return undefined;
+};
+const UNAVAILABLE_RE = /unavail|sold.?out|out.?of.?stock|nedostup|vyprod/i;
+
+/** Availability: true / false (explicitly unavailable) – unknown counts as available. */
+function pickAvailable(o) {
+  const v = firstDefined(o, ['available', 'isAvailable', 'is_available', 'inStock', 'in_stock', 'stockAvailable']);
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'number') return v > 0;
+  if (typeof v === 'string') return !/^(false|0|no|ne)$/i.test(v.trim());
+  if (o.soldOut === true || o.sold_out === true || o.outOfStock === true || o.out_of_stock === true) return false;
+  const a = o.availability !== undefined ? o.availability : o.stock;
+  if (typeof a === 'boolean') return a;
+  if (typeof a === 'number') return a > 0;
+  if (typeof a === 'string') return !UNAVAILABLE_RE.test(a);
+  if (a && typeof a === 'object') {
+    const inner = firstDefined(a, ['available', 'isAvailable', 'inStock', 'in_stock', 'status', 'quantity', 'amount']);
+    if (typeof inner === 'boolean') return inner;
+    if (typeof inner === 'number') return inner > 0;
+    if (typeof inner === 'string') return !UNAVAILABLE_RE.test(inner);
+  }
+  return true;
+}
+
+/** Structured unit price ({ value, per: 'kg'|'l'|'ks'|null, text }) if the payload has one. */
+function pickUnitPrice(o) {
+  const v = firstDefined(o, ['pricePerUnit', 'price_per_unit', 'unitPrice', 'unit_price', 'pricePerKg', 'price_per_kg',
+    'pricePerLiter', 'pricePerLitre', 'pricePerMeasure']);
+  if (v === undefined) return null;
+  let value = null;
+  let text = null;
+  let per = null;
+  if (v && typeof v === 'object') {
+    value = toNumber(firstDefined(v, ['amount', 'value', 'full', 'price']));
+    per = label(firstDefined(v, ['unit', 'per', 'measure'])) || null;
+    text = typeof v.formatted === 'string' ? v.formatted : null;
+  } else {
+    value = toNumber(v);
+    if (typeof v === 'string') {
+      text = v;
+      const m = v.match(/\/\s*(1\s*)?(kg|l|ks|100\s*g|100\s*ml)\b/i);
+      if (m) per = m[2].toLowerCase();
+    }
+  }
+  if (!per) {
+    if (o.pricePerKg !== undefined || o.price_per_kg !== undefined) per = 'kg';
+    else if (o.pricePerLiter !== undefined || o.pricePerLitre !== undefined) per = 'l';
+    else per = label(o.unitPriceUnit || o.unit_price_unit || o.measureUnit) || null;
+  }
+  if (typeof per === 'string') per = per.toLowerCase().replace(/^1\s*(?=[a-z])/, '').trim();
+  if (per && !['kg', 'l', 'ks'].includes(per)) {
+    const m = String(per).match(/^(\d+)\s*(g|ml)$/); // "100 g" → per kg
+    if (m && value != null) {
+      value = (value * 1000) / Number(m[1]);
+      per = m[2] === 'g' ? 'kg' : 'l';
+      text = null;
+    } else {
+      per = null;
+    }
+  }
+  if (value == null || !(value > 0)) return null;
+  return { value, per, text };
+}
+
+/** Structured package size ({ qty, unit } in g / ml / ks) if present. */
+function pickPack(o) {
+  const amount = firstDefined(o, ['packageAmount', 'package_amount', 'amount', 'weight', 'volume', 'netWeight', 'net_weight']);
+  const unit = label(firstDefined(o, ['packageUnit', 'package_unit', 'amountUnit', 'amount_unit', 'unitOfMeasure', 'measureUnit']));
+  if (typeof amount === 'number' && unit) return quantity.toBase(amount, unit);
+  if (amount && typeof amount === 'object') {
+    const n = toNumber(firstDefined(amount, ['value', 'amount', 'quantity']));
+    const u = label(firstDefined(amount, ['unit', 'measure']));
+    if (n != null && u) return quantity.toBase(n, u);
+  }
+  if (typeof amount === 'string') return quantity.parsePack(amount);
+  return null;
+}
+
+function pickBadges(o) {
+  const out = [];
+  for (const k of ['badges', 'labels', 'tags', 'flags', 'stickers']) {
+    const v = o[k];
+    if (Array.isArray(v)) {
+      v.forEach((b) => {
+        const t = label(b);
+        if (typeof t === 'string' && t.trim()) out.push(t.trim().slice(0, 30));
+      });
+    }
+  }
+  if (o.bio === true || o.isBio === true || o.organic === true) out.push('BIO');
+  const origRaw = o.originalPrice !== undefined ? o.originalPrice : o.regularPrice;
+  const orig = origRaw && typeof origRaw === 'object' ? toNumber(origRaw.amount ?? origRaw.value) : toNumber(origRaw);
+  const cur = pickPrice(o).price;
+  if (o.sale === true || o.inPromotion === true || (orig && cur && orig > cur)) out.push('Akce');
+  return [...new Set(out)].slice(0, 6);
+}
+
 function normaliseProduct(o) {
   const id = o.productId ?? o.product_id ?? o.id ?? o.sku;
   const { price, text, cur } = pickPrice(o);
-  const unit = o.textualAmount || o.textual_amount || o.unit || o.packageInfo || '';
-  let imageUrl = o.imageUrl || o.image_url || o.image || o.imgPath || null;
+  const unitRaw = o.textualAmount || o.textual_amount || o.packageInfo || o.package_info || o.unit || o.packageSize || '';
+  const unit = typeof unitRaw === 'string' ? unitRaw : (label(unitRaw) || '');
+  let imageUrl = o.imageUrl || o.image_url || o.image || o.imgPath || o.img || o.thumbnail || null;
+  if (imageUrl && typeof imageUrl === 'object') imageUrl = imageUrl.url || imageUrl.src || null;
   if (!imageUrl && Array.isArray(o.images) && o.images.length) {
     imageUrl = typeof o.images[0] === 'string' ? o.images[0] : o.images[0].url;
   }
   const slug = o.url || o.link || o.slug || null;
+  const up = pickUnitPrice(o);
+  const brand = label(o.brand || o.brandName || o.manufacturer);
+  const category = label(o.category || o.categoryName || (Array.isArray(o.categories) && o.categories[0]));
   return {
     productId: String(id),
     name: String(o.name || o.productName || o.title),
     price,
     priceText: text || (price != null ? `${price} ${!cur || cur === 'CZK' ? 'Kč' : cur}` : ''),
-    unit: typeof unit === 'string' ? unit : String(unit),
-    imageUrl: typeof imageUrl === 'string' ? imageUrl : null,
+    unit: String(unit).slice(0, 60),
+    imageUrl: typeof imageUrl === 'string' && /^https?:\/\//.test(imageUrl) ? imageUrl : null,
     url: slug ? (/^https?:/.test(slug) ? slug : `https://www.rohlik.cz/${String(slug).replace(/^\//, '')}`) : null,
+    available: pickAvailable(o),
+    brand: typeof brand === 'string' ? brand.slice(0, 60) : null,
+    category: typeof category === 'string' ? category.slice(0, 60) : null,
+    badges: pickBadges(o),
+    pack: pickPack(o),
+    unitPriceValue: up ? up.value : null,
+    unitPricePer: up ? up.per : null,
+    unitPriceText: up && up.text ? String(up.text).slice(0, 40) : null,
   };
+}
+
+/** Raw product objects of a search result (largest product-like array). */
+function rawProducts(result) {
+  const arrays = [];
+  for (const p of extractPayloads(result)) findProductArrays(p, arrays);
+  if (!arrays.length) return [];
+  return arrays.sort((a, b) => b.length - a.length)[0];
 }
 
 /** Products from a search result, best-first (server order), deduplicated by productId. */
 function parseProducts(result) {
-  const arrays = [];
-  for (const p of extractPayloads(result)) findProductArrays(p, arrays);
-  if (!arrays.length) return [];
-  const best = arrays.sort((a, b) => b.length - a.length)[0];
   const seen = new Set();
-  return best.map(normaliseProduct).filter((p) => {
+  return rawProducts(result).map(normaliseProduct).filter((p) => {
     if (!p.productId || p.productId === 'undefined' || seen.has(p.productId)) return false;
     seen.add(p.productId);
     return true;
   });
+}
+
+/** Key set of a raw product object (keys only, nested one level) – for logging, never values. */
+function describeKeys(o) {
+  if (!o || typeof o !== 'object') return '';
+  return Object.keys(o).slice(0, 60).map((k) => {
+    const v = o[k];
+    if (v && typeof v === 'object' && !Array.isArray(v)) return `${k}{${Object.keys(v).slice(0, 20).join(',')}}`;
+    if (Array.isArray(v)) return `${k}[]`;
+    return k;
+  }).join(',');
 }
 
 const MAX_VARIANTS = 5;
@@ -210,13 +344,21 @@ async function listTools(client, { refresh = false } = {}) {
   return tools;
 }
 
-async function searchProducts(client, query, max = MAX_VARIANTS) {
+/**
+ * Runs one product search. Returns normalised products (up to SEARCH_LIMIT, in Rohlík's order).
+ * onRaw(rawFirstProduct) is called with the first raw result object (for key logging).
+ */
+async function searchProducts(client, query, { onRaw } = {}) {
   const tools = await listTools(client);
   const tool = pickSearchTool(tools);
   if (!tool) throw new Error('Rohlík MCP: nenalezen nástroj pro vyhledávání produktů.');
   const res = await client.callTool({ name: tool.name, arguments: buildSearchArgs(tool, query) });
   if (res.isError) return [];
-  return parseProducts(res).slice(0, Math.min(max, MAX_VARIANTS));
+  if (onRaw) {
+    const raw = rawProducts(res);
+    if (raw.length) onRaw(raw[0]);
+  }
+  return parseProducts(res).slice(0, SEARCH_LIMIT);
 }
 
 async function addToCart(client, products) {
@@ -244,5 +386,5 @@ async function addToCart(client, products) {
 
 module.exports = {
   pickSearchTool, pickAddTool, buildSearchArgs, buildAddCalls, parseProducts,
-  normaliseProduct, simplifyQuery, MAX_VARIANTS, connect, listTools, searchProducts, addToCart,
+  normaliseProduct, rawProducts, describeKeys, simplifyQuery, MAX_VARIANTS, SEARCH_LIMIT, connect, listTools, searchProducts, addToCart,
 };

@@ -265,6 +265,49 @@ test('pantry, settings, activity, pushTokens, regulars', async () => {
   await assertFails(set(ref(db('eve'), `households/${HID}/regulars/k2`), { name: 'Káva' }));
 });
 
+test('settings/shop validation', async () => {
+  const bob = db('bob');
+  await assertSucceeds(update(ref(bob, `households/${HID}/settings`), {
+    'shop/preferLight': true, 'shop/preferBio': false, 'shop/sort': 'unitPrice',
+  }));
+  await assertSucceeds(set(ref(bob, `households/${HID}/settings/shop/sort`), 'best'));
+  await assertFails(set(ref(bob, `households/${HID}/settings/shop/sort`), 'cheapest'));
+  await assertFails(set(ref(bob, `households/${HID}/settings/shop/preferBio`), 'yes'));
+  await assertFails(set(ref(bob, `households/${HID}/settings/shop/evil`), true));
+  await assertFails(set(ref(db('eve'), `households/${HID}/settings/shop/preferLight`), true));
+  // the rest of the settings stay intact
+  const snap = await get(ref(bob, `households/${HID}/settings`));
+  assert.strictEqual(snap.val().remindHour, 9);
+});
+
+test('productPrefs validation', async () => {
+  const bob = db('bob');
+  const pref = {
+    productId: '1234', name: 'Madeta Cottage 180 g', imageUrl: 'https://cdn.rohlik.cz/images/1234.jpg',
+    priceText: '39,90 Kč', packText: '180 g', count: 1, lastAt: 5, by: 'bob',
+  };
+  await assertSucceeds(set(ref(bob, `households/${HID}/productPrefs/cottage sýr`), pref));
+  await assertSucceeds(update(ref(bob, `households/${HID}/productPrefs`), {
+    'cottage sýr': { ...pref, count: 2 },
+    'regular:k1': { productId: '9', name: 'Káva', count: 1, lastAt: 6, by: 'bob' },
+  }));
+  await assertSucceeds(get(ref(db('alice'), `households/${HID}/productPrefs`)));
+  await assertFails(set(ref(bob, `households/${HID}/productPrefs/x`), { ...pref, by: 'alice' }));
+  await assertFails(set(ref(bob, `households/${HID}/productPrefs/x`), { ...pref, count: '2' }));
+  await assertFails(set(ref(bob, `households/${HID}/productPrefs/x`), { ...pref, count: 0 }));
+  await assertFails(set(ref(bob, `households/${HID}/productPrefs/x`), { ...pref, lastAt: 'now' }));
+  await assertFails(set(ref(bob, `households/${HID}/productPrefs/x`), { ...pref, name: 'x'.repeat(201) }));
+  await assertFails(set(ref(bob, `households/${HID}/productPrefs/x`), { ...pref, priceText: 'x'.repeat(201) }));
+  await assertFails(set(ref(bob, `households/${HID}/productPrefs/x`), { ...pref, imageUrl: 'javascript:alert(1)' }));
+  await assertFails(set(ref(bob, `households/${HID}/productPrefs/x`), { ...pref, evil: 1 }));
+  const { productId, ...noId } = pref;
+  await assertFails(set(ref(bob, `households/${HID}/productPrefs/x`), noId));
+  await assertFails(set(ref(bob, `households/${HID}/productPrefs/${'k'.repeat(121)}`), pref));
+  await assertFails(set(ref(db('eve'), `households/${HID}/productPrefs/x`), { ...pref, by: 'eve' }));
+  await assertFails(get(ref(db('eve'), `households/${HID}/productPrefs`)));
+  await assertSucceeds(remove(ref(bob, `households/${HID}/productPrefs/cottage sýr`)));
+});
+
 test('other household is isolated', async () => {
   await assertFails(get(ref(db('alice'), `households/${OTHER}`)));
   await assertFails(set(ref(db('alice'), `households/${OTHER}/plan/${today}/lunch`), 'r1'));

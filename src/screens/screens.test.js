@@ -23,14 +23,16 @@ jest.mock('../firebase', () => ({ app: {}, db: {}, auth: {} }));
 jest.mock('firebase/database', () => ({}));
 jest.mock('firebase/auth', () => ({}));
 jest.mock('firebase/functions', () => ({}));
+const mockUnits = ['500 g', '100 g', '1 kg'];
 const mockCandidates = [1, 2, 3].map((n) => ({
   productId: String(n),
   name: `Špagety varianta ${n}`,
   price: 30 + n,
   priceText: `${30 + n} Kč`,
-  unit: '500 g',
+  unit: mockUnits[n - 1],
   imageUrl: null,
 }));
+const mockCalls = [];
 jest.mock('../services/rohlik', () => ({
   getRohlikStatus: () => Promise.resolve({ connected: true, toolCount: 0 }),
   startRohlikOAuth: () =>
@@ -41,8 +43,21 @@ jest.mock('../services/rohlik', () => ({
   finishRohlikOAuth: () => Promise.resolve({ connected: true, emailMasked: 'v***@gmail.com' }),
   disconnectRohlik: () => Promise.resolve({ connected: false }),
   needsReconnect: () => false,
-  matchProducts: (items) =>
-    Promise.resolve({ results: items.map((it) => ({ key: it.key, candidates: mockCandidates })) }),
+  matchProducts: (items, prefs) => {
+    mockCalls.push({ items, prefs });
+    return Promise.resolve({
+      results: items.map((it) => ({
+        key: it.key,
+        query: it.query || it.name,
+        candidates: mockCandidates,
+        preferred: it.preferredProductId
+          ? mockCandidates.some((c) => c.productId === it.preferredProductId)
+            ? 'found'
+            : 'missing'
+          : null,
+      })),
+    });
+  },
   fillCart: () => Promise.resolve({ ok: true, added: 0, failed: [] }),
 }));
 // Plain functions (not jest.fn) – CRA's resetMocks would wipe jest.fn implementations.
@@ -120,6 +135,8 @@ const household = {
   addRegular: noop,
   updateRegular: noop,
   deleteRegular: noop,
+  productPrefs: {},
+  saveProductPrefs: noop,
 };
 const auth = { user: { uid: 'u1' }, nickname: 'Vojta', login: noop, register: noop, logout: noop };
 
@@ -188,20 +205,73 @@ test('Nákup', () => {
   expect(screen.getAllByText('Toaletní papír')).toHaveLength(2);
 });
 
-test('Nákup – varianty produktů', async () => {
-  renderAt('/cart', <Cart />);
+test('Nákup – karusel variant, zapamatovaná volba, množství, hledat jinak', async () => {
+  mockCalls.length = 0;
+  renderAt('/cart', <Cart />, '/cart', {
+    ...household,
+    settings: { ...household.settings, shop: { preferBio: true } },
+    productPrefs: {
+      mléko: { productId: '2', name: 'Špagety varianta 2', count: 2, lastAt: 1, by: 'u1' },
+      špagety: { productId: '9', name: 'Staré špagety', packText: '500 g', priceText: '25 Kč', count: 1, lastAt: 1, by: 'u1' },
+    },
+  });
   fireEvent.click(screen.getByText('Najít na Rohlíku'));
   expect(await screen.findByText('Vyberte produkty')).toBeInTheDocument();
-  const groups = screen.getAllByRole('radiogroup');
-  expect(groups.length).toBe(3); // Káva + Mléko + Špagety
-  const radios = within(groups[0]).getAllByRole('radio');
-  expect(radios).toHaveLength(4); // 3 variants + Přeskočit
-  expect(radios[0]).toHaveAttribute('aria-checked', 'true');
-  fireEvent.click(radios[2]);
-  expect(radios[2]).toHaveAttribute('aria-checked', 'true');
-  expect(radios[0]).toHaveAttribute('aria-checked', 'false');
-  fireEvent.click(radios[3]);
-  expect(radios[3]).toHaveAttribute('aria-checked', 'true');
+
+  // the request carries the summed need, the remembered product and the household prefs
+  const req = mockCalls[0];
+  expect(req.prefs).toEqual({ preferLight: false, preferBio: true, sort: 'best' });
+  const spReq = req.items.find((i) => i.key === 'špagety');
+  expect(spReq.need).toEqual({ qty: 200, unit: 'g' });
+  expect(spReq.preferredProductId).toBe('9');
+  expect(screen.getByText('Potřeba: 200 g · pro: Těstoviny Bolognese')).toBeInTheDocument();
+
+  const lists = screen.getAllByRole('listbox');
+  expect(lists).toHaveLength(3); // Káva + Mléko + Špagety
+  // remembered product found → first, preselected, "Vaše volba"
+  const milk = within(lists[1]).getAllByRole('option');
+  expect(milk[0]).toHaveTextContent('Špagety varianta 2');
+  expect(milk[0]).toHaveTextContent('Vaše volba');
+  expect(milk[0]).toHaveAttribute('aria-selected', 'true');
+  // remembered product not found → stored snapshot first
+  const spItem = lists[2].closest('.shop-item');
+  let sp = within(lists[2]).getAllByRole('option');
+  expect(sp).toHaveLength(4);
+  expect(sp[0]).toHaveTextContent('z minulého nákupu');
+  expect(sp[0]).toHaveAttribute('aria-selected', 'true');
+  // a 100 g pack for 200 g → 2 packs preselected
+  fireEvent.click(sp[2]);
+  expect(sp[2]).toHaveAttribute('aria-selected', 'true');
+  expect(sp[0]).toHaveAttribute('aria-selected', 'false');
+  expect(spItem.querySelector('.shop-item__total strong')).toHaveTextContent('64 Kč');
+  // 500 g pack → "zbude 300 g" hint on its card
+  expect(sp[1]).toHaveTextContent('zbude 300 g');
+  // keyboard: arrow right selects the next card (1 kg → 1 pack)
+  fireEvent.keyDown(sp[2], { key: 'ArrowRight' });
+  expect(sp[3]).toHaveAttribute('aria-selected', 'true');
+  expect(spItem.querySelector('.shop-item__total strong')).toHaveTextContent('33 Kč');
+  // skip toggle
+  const skip = within(spItem).getByText('Přeskočit').closest('button');
+  fireEvent.click(skip);
+  expect(skip).toHaveAttribute('aria-pressed', 'true');
+  expect(within(lists[2]).queryAllByRole('option', { selected: true })).toHaveLength(0);
+  fireEvent.click(sp[1]);
+  expect(skip).toHaveAttribute('aria-pressed', 'false');
+
+  // "Hledat jinak" → one call for this single item with the custom query
+  fireEvent.click(within(spItem).getByText('Hledat jinak'));
+  const input = within(spItem).getByLabelText('Hledat jinak – Špagety');
+  fireEvent.change(input, { target: { value: 'spaghetti integrale' } });
+  fireEvent.click(within(spItem).getByText('Hledat'));
+  expect(await within(spItem).findAllByRole('option')).toHaveLength(3);
+  expect(mockCalls).toHaveLength(2);
+  expect(mockCalls[1].items).toHaveLength(1);
+  expect(mockCalls[1].items[0]).toMatchObject({ key: 'špagety', query: 'spaghetti integrale' });
+  expect(mockCalls[1].items[0].preferredProductId).toBeUndefined();
+  sp = within(spItem).getAllByRole('option');
+  expect(sp).toHaveLength(3); // fresh results only, no snapshot of the remembered product
+  expect(sp[0]).toHaveAttribute('aria-selected', 'true');
+  expect(sp[0]).not.toHaveTextContent('z minulého nákupu');
 });
 
 test('Nákup – Rohlík nepřipojený', () => {
@@ -236,6 +306,27 @@ test('Nastavení – zakladatel', async () => {
   expect(screen.getByText('Odpojit')).toBeInTheDocument();
   expect(screen.getByLabelText('Odebrat Jana')).toBeInTheDocument();
   expect(screen.getByLabelText('Vygenerovat nový kód')).toBeInTheDocument();
+});
+
+test('Nastavení – nákup na Rohlíku', async () => {
+  const calls = [];
+  renderAt('/settings', <Settings />, '/settings', {
+    ...household,
+    settings: { ...household.settings, shop: { preferLight: true } },
+    updateSettings: (patch) => {
+      calls.push(patch);
+      return Promise.resolve();
+    },
+  });
+  expect(screen.getByText('Nákup na Rohlíku')).toBeInTheDocument();
+  const light = screen.getByText('Upřednostnit light / 0 % tuku').closest('button');
+  expect(light).toHaveAttribute('aria-checked', 'true');
+  fireEvent.click(light);
+  fireEvent.click(screen.getByText('Upřednostnit BIO'));
+  expect(screen.getByText('Nejlepší shoda')).toHaveAttribute('aria-checked', 'true');
+  fireEvent.click(screen.getByText('Nejlevnější za kg'));
+  expect(calls).toEqual([{ 'shop/preferLight': false }, { 'shop/preferBio': true }, { 'shop/sort': 'unitPrice' }]);
+  expect(await screen.findByText('Tento prohlížeč upozornění nepodporuje.', { exact: false })).toBeInTheDocument();
 });
 
 test('Nastavení – připojení Rohlíku přes OAuth', async () => {

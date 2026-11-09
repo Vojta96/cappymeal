@@ -12,6 +12,7 @@ const v = require('./src/validate');
 const enc = require('./src/crypto');
 const rl = require('./src/rateLimit');
 const oauth = require('./src/rohlikOAuth');
+const matcher = require('./src/matcher');
 
 const DB_URL = 'https://cappymeal-go-default-rtdb.europe-west1.firebasedatabase.app';
 admin.initializeApp({ databaseURL: DB_URL });
@@ -555,23 +556,31 @@ exports.rohlikStatus = onCall(ROHLIK, handle('rohlikStatus', async (request) => 
 exports.rohlikMatch = onCall(ROHLIK, handle('rohlikMatch', async (request) => {
   const { hid } = await requireMember(request);
   const items = v.validateMatchItems(request.data);
+  const prefs = v.validateShopPrefs(request.data);
   await requireConnected(hid);
   await limit(`h/${hid}/rohlikMatch`, 30);
   return withClient(hid, async (client) => {
+    let loggedKeys = false;
+    // The real shape of Rohlík search results is still unknown: log the key set (never values) once per request.
+    const onRaw = (raw) => {
+      if (loggedKeys) return;
+      loggedKeys = true;
+      console.info('rohlikMatch raw product keys:', rohlik.describeKeys(raw));
+    };
+    const search = (query) => rohlik.searchProducts(client, query, { onRaw });
     const results = new Array(items.length);
     let next = 0;
     async function worker() {
       while (next < items.length) {
         const idx = next++;
         const it = items[idx];
-        let candidates = [];
         try {
           // eslint-disable-next-line no-await-in-loop
-          candidates = await rohlik.searchProducts(client, rohlik.simplifyQuery(it.name), rohlik.MAX_VARIANTS);
+          results[idx] = await matcher.matchItem(search, it, prefs);
         } catch (e) {
           console.warn('rohlikMatch search failed:', (e && e.message) || '');
+          results[idx] = { key: it.key, candidates: [], preferred: null };
         }
-        results[idx] = { key: it.key, candidates };
       }
     }
     await Promise.all(Array.from({ length: Math.min(4, items.length) }, worker));

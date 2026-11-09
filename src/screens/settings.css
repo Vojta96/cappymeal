@@ -97,6 +97,21 @@
   padding-top: 12px;
 }
 
+.shop-sort {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.shop-sort .segment button {
+  padding: 0 12px;
+}
+
+.shop-sort .segment button:focus-visible {
+  outline: 3px solid var(--alert);
+  outline-offset: 1px;
+}
+
 @media (min-width: 1024px) {
   .settings-grid {
     display: grid;

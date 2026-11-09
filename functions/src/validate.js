@@ -133,7 +133,11 @@ function validateSeedRecipes(list, uid, now) {
   return list.map((r) => validateRecipe(r, uid, now));
 }
 
-/** rohlikMatch input: [{ key, name, amounts? }] (≤ 60). */
+const NEED_UNITS = ['g', 'ml', 'ks'];
+
+/**
+ * rohlikMatch input: [{ key, name, amounts?, need?: { qty, unit }, query?, preferredProductId?, preferredName? }] (≤ 60).
+ */
 function validateMatchItems(data) {
   const items = isPlainObject(data) ? data.items : undefined;
   if (!Array.isArray(items) || items.length > 60) {
@@ -148,8 +152,45 @@ function validateMatchItems(data) {
     if (!Array.isArray(amounts) || amounts.length > 10 || amounts.some((a) => !isStr(a) || a.length > 40)) {
       throw new InputError('Neplatné množství.');
     }
-    return { key: it.key, name: it.name.trim(), amounts };
+    const out = { key: it.key, name: it.name.trim(), amounts };
+    if (it.need !== undefined && it.need !== null) {
+      const n = it.need;
+      if (!isPlainObject(n) || typeof n.qty !== 'number' || !Number.isFinite(n.qty) || n.qty <= 0 || n.qty > 100000
+        || !NEED_UNITS.includes(n.unit)) {
+        throw new InputError('Neplatné množství.');
+      }
+      out.need = { qty: n.qty, unit: n.unit };
+    }
+    if (it.query !== undefined && it.query !== null && it.query !== '') {
+      if (!isStr(it.query) || it.query.length > 60 || !it.query.trim()) throw new InputError('Neplatný hledaný výraz.');
+      out.query = it.query.replace(/\s+/g, ' ').trim();
+    }
+    if (it.preferredProductId !== undefined && it.preferredProductId !== null && it.preferredProductId !== '') {
+      const id = isStr(it.preferredProductId) || typeof it.preferredProductId === 'number' ? String(it.preferredProductId) : '';
+      if (!PRODUCT_ID_RE.test(id)) throw new InputError('Neplatné ID produktu.');
+      out.preferredProductId = id;
+    }
+    if (it.preferredName !== undefined && it.preferredName !== null && it.preferredName !== '') {
+      if (!isStr(it.preferredName) || it.preferredName.length > 200) throw new InputError('Neplatná položka.');
+      out.preferredName = it.preferredName.trim();
+    }
+    return out;
   });
+}
+
+/** Household shopping preferences (settings/shop) as passed to rohlikMatch; unknown → defaults. */
+function validateShopPrefs(data) {
+  const p = isPlainObject(data) ? data.prefs : undefined;
+  if (p === undefined || p === null) return { preferLight: false, preferBio: false, sort: 'best' };
+  if (!isPlainObject(p)) throw new InputError('Neplatné předvolby nákupu.');
+  const bool = (x) => {
+    if (x === undefined || x === null) return false;
+    if (typeof x !== 'boolean') throw new InputError('Neplatné předvolby nákupu.');
+    return x;
+  };
+  const sort = p.sort === undefined || p.sort === null ? 'best' : p.sort;
+  if (!['best', 'unitPrice'].includes(sort)) throw new InputError('Neplatné předvolby nákupu.');
+  return { preferLight: bool(p.preferLight), preferBio: bool(p.preferBio), sort };
 }
 
 /** rohlikFillCart input. */
@@ -207,6 +248,7 @@ module.exports = {
   validateRecipe,
   validateSeedRecipes,
   validateMatchItems,
+  validateShopPrefs,
   validateFillCart,
   validateUid,
   ipKey,

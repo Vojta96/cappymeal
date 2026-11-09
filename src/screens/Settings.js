@@ -7,6 +7,7 @@ import { enablePush, pushSupported } from '../services/push';
 import { removeMember, rotateJoinCode, SEED_RECIPE_COUNT } from '../services/household';
 import RohlikAccount from '../components/RohlikAccount';
 import { capitalizeFirst, householdDisplayName, initial } from '../lib/text';
+import { shopPrefs } from '../lib/shop';
 import './notifications.css';
 import './settings.css';
 
@@ -14,6 +15,15 @@ const REMINDERS = [
   ['remind3d', '3 dny předem', 'Když na den za 3 dny není objednáno'],
   ['remindDaily', 'Každý další den', 'Připomínat denně, dokud neobjednáte'],
   ['remindBoth', 'Oběma v domácnosti', 'Upozornění dostanete vy i partner(ka)'],
+];
+
+const SHOP_TOGGLES = [
+  ['preferLight', 'Upřednostnit light / 0 % tuku', 'Nízkotučné varianty, skyr, odtučněné mléko…'],
+  ['preferBio', 'Upřednostnit BIO', 'Produkty s označením BIO'],
+];
+const SHOP_SORT = [
+  ['best', 'Nejlepší shoda'],
+  ['unitPrice', 'Nejlevnější za kg'],
 ];
 
 const PUSH_RESULT = {
@@ -135,6 +145,15 @@ export default function Settings() {
     } catch (e) {
       setToast('Název se nepodařilo uložit');
     }
+  };
+
+  const shop = shopPrefs(settings);
+  const saveShop = (patch) => {
+    const updates = {};
+    Object.entries(patch).forEach(([k, val]) => {
+      updates[`shop/${k}`] = val;
+    });
+    Promise.resolve(updateSettings(updates)).catch(() => setToast('Nastavení se nepodařilo uložit'));
   };
 
   const memberList = Object.entries(members || {}).sort(
@@ -262,6 +281,50 @@ export default function Settings() {
           <div className="stack">
             <h2 className="h-section">Účet Rohlík</h2>
             <RohlikAccount onToast={setToast} />
+          </div>
+
+          <div className="stack">
+            <h2 className="h-section">Nákup na Rohlíku</h2>
+            <div className="list-card">
+              {SHOP_TOGGLES.map(([k, label, sub]) => (
+                <button
+                  type="button"
+                  key={k}
+                  className="list-row"
+                  role="switch"
+                  aria-checked={shop[k]}
+                  onClick={() => saveShop({ [k]: !shop[k] })}
+                >
+                  <div className="list-row__body">
+                    <div className="list-row__title">{label}</div>
+                    <div className="list-row__sub">{sub}</div>
+                  </div>
+                  <Toggle on={shop[k]} />
+                </button>
+              ))}
+              <div className="list-row shop-sort">
+                <div className="list-row__title" id="shop-sort-label">
+                  Řadit podle
+                </div>
+                <div className="segment" role="radiogroup" aria-labelledby="shop-sort-label">
+                  {SHOP_SORT.map(([v, label]) => (
+                    <button
+                      type="button"
+                      key={v}
+                      role="radio"
+                      aria-checked={shop.sort === v}
+                      className={shop.sort === v ? 'on' : ''}
+                      onClick={() => shop.sort !== v && saveShop({ sort: v })}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="push-box__hint" style={{ padding: '0 4px' }}>
+              Platí pro celou domácnost. Produkty, které jste už jednou vybrali, nabídneme příště jako první.
+            </div>
           </div>
         </section>
 

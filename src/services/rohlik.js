@@ -16,13 +16,23 @@ const chunks = (list, size) => {
   return out;
 };
 
-/** Trims an item to the server's input caps. */
-export function matchItem({ key, name, amounts }) {
-  return {
+/** Trims an item to the server's input caps (see functions/src/validate.js). */
+export function matchItem({ key, name, amounts, need, query, preferredProductId, preferredName }) {
+  const out = {
     key: String(key).slice(0, 120),
     name: String(name).trim().slice(0, 100),
     amounts: (amounts || []).slice(0, 10).map((a) => String(a).slice(0, 40)),
   };
+  if (need && ['g', 'ml', 'ks'].includes(need.unit) && need.qty > 0 && need.qty <= 100000) {
+    out.need = { qty: need.qty, unit: need.unit };
+  }
+  const q = typeof query === 'string' ? query.replace(/\s+/g, ' ').trim().slice(0, 60) : '';
+  if (q) out.query = q;
+  if (preferredProductId != null && /^[A-Za-z0-9_-]{1,40}$/.test(String(preferredProductId))) {
+    out.preferredProductId = String(preferredProductId);
+    if (preferredName) out.preferredName = String(preferredName).trim().slice(0, 200);
+  }
+  return out;
 }
 
 export const getRohlikStatus = () => callFunction('rohlikStatus', undefined, LONG);
@@ -32,11 +42,18 @@ export const startRohlikOAuth = () => callFunction('rohlikOAuthStart');
 export const finishRohlikOAuth = (redirectUrl) => callFunction('rohlikOAuthFinish', { redirectUrl }, LONG);
 export const disconnectRohlik = () => callFunction('rohlikDisconnect');
 
-export async function matchProducts(items) {
+/**
+ * items: [{ key, name, amounts, need?, query?, preferredProductId?, preferredName? }]
+ * prefs: household shopping preferences (settings/shop) – { preferLight, preferBio, sort }.
+ * → { results: [{ key, query, candidates[], preferred: null | 'found' | 'unavailable' | 'missing' }] }
+ */
+export async function matchProducts(items, prefs) {
   const results = [];
   for (const part of chunks(items.map(matchItem), MATCH_CHUNK)) {
+    const data = { items: part };
+    if (prefs) data.prefs = { preferLight: !!prefs.preferLight, preferBio: !!prefs.preferBio, sort: prefs.sort === 'unitPrice' ? 'unitPrice' : 'best' };
     // eslint-disable-next-line no-await-in-loop
-    const res = await callFunction('rohlikMatch', { items: part }, LONG);
+    const res = await callFunction('rohlikMatch', data, LONG);
     results.push(...((res && res.results) || []));
   }
   return { results };

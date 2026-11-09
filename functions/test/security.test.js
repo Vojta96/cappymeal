@@ -108,6 +108,33 @@ test('rohlikMatch input caps', () => {
   bad([{ ...item, amounts: ['x'.repeat(41)] }]);
   bad([{ key: 1, name: 'x' }]);
   bad('nope');
+  // optional fields of the smarter search
+  const full = v.validateMatchItems({ items: [{
+    ...item, need: { qty: 450, unit: 'g' }, query: '  cottage   sýr ', preferredProductId: 1234, preferredName: 'Madeta Cottage 180 g',
+  }] })[0];
+  assert.deepStrictEqual(full.need, { qty: 450, unit: 'g' });
+  assert.strictEqual(full.query, 'cottage sýr');
+  assert.strictEqual(full.preferredProductId, '1234');
+  assert.strictEqual(full.preferredName, 'Madeta Cottage 180 g');
+  assert.strictEqual(v.validateMatchItems({ items: [{ ...item, need: null, query: '' }] })[0].need, undefined);
+  bad([{ ...item, need: { qty: 1, unit: 'lžíce' } }]);
+  bad([{ ...item, need: { qty: -1, unit: 'g' } }]);
+  bad([{ ...item, need: { qty: 1e6, unit: 'g' } }]);
+  bad([{ ...item, need: { qty: '5', unit: 'g' } }]);
+  bad([{ ...item, query: 'x'.repeat(61) }]);
+  bad([{ ...item, query: '   ' }]);
+  bad([{ ...item, query: 5 }]);
+  bad([{ ...item, preferredProductId: '../x' }]);
+  bad([{ ...item, preferredName: 'x'.repeat(201) }]);
+});
+
+test('rohlikMatch shop prefs', () => {
+  assert.deepStrictEqual(v.validateShopPrefs({}), { preferLight: false, preferBio: false, sort: 'best' });
+  assert.deepStrictEqual(v.validateShopPrefs({ prefs: { preferLight: true, sort: 'unitPrice' } }),
+    { preferLight: true, preferBio: false, sort: 'unitPrice' });
+  assert.throws(() => v.validateShopPrefs({ prefs: { preferBio: 'yes' } }), v.InputError);
+  assert.throws(() => v.validateShopPrefs({ prefs: { sort: 'random' } }), v.InputError);
+  assert.throws(() => v.validateShopPrefs({ prefs: 'x' }), v.InputError);
 });
 
 test('rohlikFillCart input caps', () => {
