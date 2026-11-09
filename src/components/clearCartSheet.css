@@ -1,0 +1,160 @@
+/* "Vysypat košík" confirmation (ClearCartSheet) + the "Rozpracovaná objednávka" card on Nákup. */
+.clear-cart {
+  gap: 14px;
+  padding-bottom: 8px;
+}
+
+.clear-cart__text {
+  font-size: 14.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.clear-cart__list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.clear-cart__list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  font-size: 14px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line-2);
+  min-width: 0;
+}
+
+.clear-cart__list li:last-child {
+  border-bottom: 0;
+}
+
+.clear-cart__list li > .ellipsis {
+  flex: 1;
+  min-width: 0;
+}
+
+.clear-cart__tag {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--chip);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.clear-cart__price {
+  flex: none;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.clear-cart__error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.clear-cart__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.clear-cart__actions .link-btn {
+  align-self: center;
+  padding: 6px;
+}
+
+/* Nákup: the shopping waiting in the Rohlík cart */
+.cart-resume {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cart-resume__head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.cart-resume__icon {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.cart-resume__title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.cart-resume__days {
+  font-size: 14.5px;
+  color: var(--ink-2);
+  margin-top: 2px;
+}
+
+.cart-resume__status {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--success);
+  background: var(--success-bg);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+.cart-resume__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cart-resume__actions .btn {
+  width: auto;
+}
+
+.cart-notice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: var(--alert-bg);
+  color: var(--alert-ink);
+  border-radius: 18px;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+@media (min-width: 1024px) {
+  .cart-resume {
+    max-width: 720px;
+  }
+}

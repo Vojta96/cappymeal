@@ -1,7 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useHousehold } from '../context/HouseholdContext';
 import RegularsSheet from '../components/RegularsSheet';
+import ClearCartSheet from '../components/ClearCartSheet';
+import { clearSession, loadSession, pruneItems, resolveShopDays, updateSession } from '../lib/shopSession';
 import { Icon, Spinner, Toast } from '../components/ui';
 import { dayInfo, plural } from '../lib/dates';
 import {
@@ -145,6 +147,13 @@ function ShopItem({ item, need, entry, pick, busy, loading, onPick, onSearch }) 
           <Spinner small />
           Hledám na Rohlíku…
         </div>
+      ) : !entry ? (
+        <div className="cart__none">
+          Položka přibyla do seznamu.{' '}
+          <button type="button" className="link-btn" onClick={() => onSearch('')} disabled={busy}>
+            Najít na Rohlíku
+          </button>
+        </div>
       ) : options.length > 0 ? (
         <ProductCarousel
           options={options}
@@ -199,6 +208,8 @@ function ShopItem({ item, need, entry, pick, busy, loading, onPick, onSearch }) 
 
 export default function Cart() {
   const {
+    hid,
+    ready = true,
     horizon,
     todayKey,
     plan,
@@ -208,7 +219,6 @@ export default function Cart() {
     pantry,
     regulars,
     rohlik,
-    pendingDays,
     statusOf,
     togglePantry,
     setOrderStatus,
@@ -220,26 +230,47 @@ export default function Cart() {
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
 
-  const [daysSel, setDaysSel] = useState(() => (location.state && location.state.days) || null);
-  const [step, setStep] = useState('list'); // list | matching | matched | filling
-  const [results, setResults] = useState({}); // key -> { options, note, query } (arranged candidates)
-  const [picks, setPicks] = useState({}); // key -> { idx, qty, skip }
+  // The shopping session survives navigation / reload / the PWA being killed (src/lib/shopSession.js).
+  const [restored] = useState(() => loadSession(hid));
+  const rs = restored || {};
+  const [daysSel, setDaysSel] = useState(rs.daysSel || null); // null = brand-new session (default selection)
+  const [step, setStep] = useState(rs.step && rs.step !== 'list' ? 'matched' : 'list'); // list | matching | matched | filling
+  const [results, setResults] = useState(rs.results || {}); // key -> { options, note, query } (arranged candidates)
+  const [picks, setPicks] = useState(rs.picks || {}); // key -> { idx, qty, skip }
   const [itemBusy, setItemBusy] = useState({}); // key -> true while "Hledat jinak" runs
   const [error, setError] = useState(null); // CallError | Error | null
-  const [regSel, setRegSel] = useState({}); // regular id -> bool (this shopping only)
+  const [regSel, setRegSel] = useState(rs.regSel || {}); // regular id -> bool (this shopping only)
   const [regSheet, setRegSheet] = useState(null); // 'add' | 'manage' | null
   const [toast, setToast] = useState('');
   // One-off items added while picking products ("kdybych si na něco vzpomněl"); this shopping only.
-  const [extras, setExtras] = useState([]);
+  const [extras, setExtras] = useState(rs.extras || []);
   const [extraOpen, setExtraOpen] = useState(false);
   const [extraName, setExtraName] = useState('');
   const [extraAmount, setExtraAmount] = useState('');
+  // Cart filled from this session: { days, at, addedIds } – days waiting in the Rohlík cart.
+  const [submitted, setSubmitted] = useState(() =>
+    rs.submittedDays ? { days: rs.submittedDays, at: rs.submittedAt || 0, addedIds: rs.addedIds || [] } : null
+  );
+  const [notice, setNotice] = useState(rs.notice || null); // 'reverted' = the cart was emptied, picks kept
+  const [navKey, setNavKey] = useState(rs.navKey || null);
+  const [clearOpen, setClearOpen] = useState(false);
   const clearToast = useCallback(() => setToast(''), []);
 
-  // Re-apply navigation state when arriving again from the plan button.
+  // Arriving from the plan button with explicit days (once per navigation – a reload keeps the user's changes).
   useEffect(() => {
-    if (location.state && location.state.days) setDaysSel(location.state.days);
-  }, [location.key, location.state]);
+    const nav = location.state && location.state.days;
+    if (!nav || navKey === location.key) return;
+    setNavKey(location.key);
+    if (submitted) return; // a cart in progress keeps its card; "Začít nový nákup" starts over
+    const next = [...nav].sort();
+    if (daysSel && daysSel.join() === next.join()) return;
+    setDaysSel(next);
+    setStep('list');
+    setResults({});
+    setPicks({});
+    setNotice(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
 
   const connected = !!(rohlik && rohlik.connected);
 
@@ -254,18 +285,17 @@ export default function Cart() {
   const mustConnect = !connected || needsReconnect(error);
   const reconnect = (!connected && !!(rohlik && rohlik.needsReconnect)) || (connected && needsReconnect(error));
 
-  const days = useMemo(
-    () => (daysSel || pendingDays).filter((k) => horizon.includes(k)).sort(),
-    [daysSel, pendingDays, horizon],
+  // Explicit, stable day selection (status changes never flip it) + the "Rozpracovaná objednávka" banner.
+  const resolved = useMemo(
+    () =>
+      resolveShopDays({
+        session: { daysSel, submittedDays: submitted && submitted.days, submittedAt: submitted && submitted.at },
+        horizon,
+        statusOf,
+      }),
+    [daysSel, submitted, horizon, statusOf]
   );
-  const chipDays = useMemo(() => {
-    const set = new Set(days);
-    horizon.forEach((k) => {
-      const st = statusOf(k);
-      if (st === 'pending' || st === 'in_cart') set.add(k);
-    });
-    return [...set].sort();
-  }, [days, horizon, statusOf]);
+  const { days, chipDays, banner } = resolved;
 
   const all = useMemo(
     () => aggregateIngredients(days, plan, recipes, memberPlan, memberIds),
@@ -290,12 +320,85 @@ export default function Cart() {
   }, [all, allRegulars, extras]);
   const shop = shopPrefs(settings);
 
+  // ---------- session persistence ----------
+  const buyKeys = buy.map((it) => it.key).join('\n');
+  const pristine = !daysSel && step === 'list' && !extras.length && !Object.keys(regSel).length && !submitted;
+  const latest = useRef(null);
+  const dead = useRef(false); // order finished → nothing may be written back on unmount
+  latest.current = ready
+    ? {
+        pristine,
+        data: {
+          daysSel,
+          regSel,
+          extras,
+          step: submitted ? 'checkout' : step === 'matched' || step === 'filling' ? 'matched' : 'list',
+          // only items that still exist (plan / pantry changes drop the rest)
+          ...pruneItems(results, picks, buyKeys ? buyKeys.split('\n') : []),
+          submittedDays: submitted ? submitted.days : undefined,
+          submittedAt: submitted ? submitted.at : undefined,
+          addedIds: submitted ? submitted.addedIds : undefined,
+          notice: notice || undefined,
+          navKey: navKey || undefined,
+        },
+      }
+    : null; // household not loaded yet: never overwrite the stored session with half-computed state
+  const flush = useCallback(() => {
+    const cur = latest.current;
+    if (dead.current || !cur || !hid) return;
+    if (cur.pristine) clearSession(hid);
+    else updateSession(hid, cur.data);
+  }, [hid]);
+  useEffect(() => {
+    const t = setTimeout(flush, 300);
+    return () => clearTimeout(t);
+  }, [flush, daysSel, regSel, extras, step, results, picks, submitted, notice, navKey, buyKeys, ready]);
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, [flush]);
+
+  /** "Začít nový nákup" (or an order was placed): forget the session, default selection again. */
+  const startNew = useCallback(() => {
+    clearSession(hid);
+    setDaysSel(null);
+    setRegSel({});
+    setExtras([]);
+    setResults({});
+    setPicks({});
+    setItemBusy({});
+    setStep('list');
+    setSubmitted(null);
+    setNotice(null);
+    setError(null);
+  }, [hid]);
+
+  // Status of the submitted days decides: order placed → start fresh; cart emptied → keep the picks.
+  useEffect(() => {
+    if (!ready) return;
+    if (resolved.action === 'clear') startNew();
+    else if (resolved.action === 'reverted') {
+      setSubmitted(null);
+      setStep('matched');
+      setNotice('reverted');
+    }
+  }, [ready, resolved.action, startNew]);
+
   const resetMatch = () => {
     setStep('list');
     setResults({});
     setPicks({});
     setItemBusy({});
     setError(null);
+    setNotice(null);
   };
 
   const toggleDay = (k) => {
@@ -336,6 +439,8 @@ export default function Cart() {
 
   const findOnRohlik = async () => {
     setError(null);
+    setNotice(null);
+    setDaysSel(days); // the default selection becomes explicit: later status changes never alter it
     setStep('matching');
     try {
       const res = await matchProducts(buy.map((it) => requestFor(it)), shop);
@@ -365,7 +470,7 @@ export default function Cart() {
     try {
       const res = await matchProducts([requestFor(it, query)], shop);
       const r = ((res && res.results) || []).find((x) => x.key === it.key);
-      const { entry, pick } = applyResult(it, r || { candidates: [], query }, true);
+      const { entry, pick } = applyResult(it, r || { candidates: [], query }, !!query);
       setResults((m) => ({ ...m, [it.key]: entry }));
       setPicks((m) => ({ ...m, [it.key]: pick }));
     } catch (e) {
@@ -456,6 +561,24 @@ export default function Cart() {
       const failedIds = new Set((res.failed || []).map((f) => String(f.productId)));
       const addedIds = chosen.map((x) => String(x.product.productId)).filter((id) => !failedIds.has(id));
       rememberAdded(addedIds);
+      // Persist right away (this screen unmounts with the navigation, state updates would be lost).
+      const sub = { days, at: Date.now(), addedIds };
+      if (latest.current) {
+        latest.current = {
+          pristine: false,
+          data: {
+            ...latest.current.data,
+            daysSel: days,
+            step: 'checkout',
+            submittedDays: sub.days,
+            submittedAt: sub.at,
+            addedIds,
+            notice: undefined,
+          },
+        };
+        flush();
+      }
+      setSubmitted(sub);
       navigate('/cart/checkout', {
         state: {
           days,
@@ -477,7 +600,26 @@ export default function Cart() {
 
   const markOrdered = async () => {
     await setOrderStatus(days, 'ordered');
+    clearSession(hid);
+    dead.current = true;
     navigate('/', { replace: true });
+  };
+
+  const continueCheckout = () =>
+    navigate('/cart/checkout', { state: { days: submitted.days, addedIds: submitted.addedIds } });
+
+  /** "Vysypat košík" done: the picks stay (back to the product step), the days are pending again. */
+  const onCartCleared = (res, mode) => {
+    setClearOpen(false);
+    const emptied = !!(res.cart && res.cart.count === 0);
+    if ((res.days && res.days.length) || emptied || (mode === 'added' && res.ok)) {
+      setSubmitted(null);
+      setStep('matched');
+      setNotice('reverted');
+      setToast(emptied || mode === 'all' ? 'Košík je prázdný' : 'Nákup z CappyMeal je z košíku odebraný');
+    } else {
+      setToast('Některé položky se nepodařilo odebrat. Zkontrolujte košík na Rohlíku.');
+    }
   };
 
   const setPick = (key, patch) =>
@@ -503,7 +645,57 @@ export default function Cart() {
 
   const regSheetEl = <RegularsSheet open={!!regSheet} mode={regSheet || 'add'} onClose={() => setRegSheet(null)} />;
 
-  if (chipDays.length === 0) {
+  // The shopping of this session waits in the Rohlík cart: continue it instead of offering other days.
+  if (banner && banner.state === 'in_cart' && submitted) {
+    return (
+      <div className="screen screen--fill" style={{ gap: 18 }}>
+        {header}
+        <div className="cart-resume">
+          <div className="cart-resume__head">
+            <div className="cart-resume__icon">
+              <Icon name="shopping_cart_checkout" size={22} />
+            </div>
+            <div className="stack" style={{ gap: 0, minWidth: 0 }}>
+              <div className="cart-resume__title">Rozpracovaná objednávka</div>
+              <div className="cart-resume__days">
+                {banner.days.map((k) => dayInfo(k, todayKey).shortLabel).join(', ')}
+              </div>
+              <span className="cart-resume__status">V košíku na Rohlíku</span>
+            </div>
+          </div>
+          <div className="cart-resume__actions">
+            <button type="button" className="btn btn--dark" onClick={continueCheckout}>
+              <Icon name="arrow_forward" />
+              Pokračovat v pokladně
+            </button>
+            {connected && (
+              <button type="button" className="btn btn--danger btn--sm" onClick={() => setClearOpen(true)}>
+                <Icon name="delete_sweep" size={19} />
+                Vysypat košík
+              </button>
+            )}
+            <button type="button" className="btn btn--ghost btn--sm" onClick={startNew}>
+              <Icon name="restart_alt" size={19} />
+              Začít nový nákup
+            </button>
+          </div>
+        </div>
+        <ClearCartSheet
+          open={clearOpen}
+          onClose={() => setClearOpen(false)}
+          cart={null}
+          addedIds={submitted.addedIds}
+          days={submitted.days}
+          onCleared={onCartCleared}
+        />
+        <Toast text={toast} onDone={clearToast} />
+      </div>
+    );
+  }
+
+  // Ordered days stay visible as chips, but alone they are nothing to shop for.
+  const openDays = chipDays.filter((k) => days.includes(k) || statusOf(k) !== 'ordered');
+  if (openDays.length === 0) {
     return (
       <div className="screen screen--fill" style={{ gap: 18 }}>
         {header}
@@ -520,6 +712,7 @@ export default function Cart() {
   }
 
   const busy = step === 'matching' || step === 'filling';
+  const submitLabel = notice === 'reverted' ? 'Vložit znovu do košíku' : 'Vložit do košíku na Rohlíku';
 
   const connectCard = (
     <div className="cart__fallback">
@@ -683,7 +876,7 @@ export default function Cart() {
             disabled={busy || chosen.length === 0}
           >
             {step === 'filling' ? <Spinner small /> : <Icon name="local_shipping" />}
-            {step === 'filling' ? 'Vkládám do košíku…' : 'Vložit do košíku na Rohlíku'}
+            {step === 'filling' ? 'Vkládám do košíku…' : submitLabel}
           </button>
           <div className="cart__panel-note">
             Pak tu zvolíte doručení a platbu a objednávku potvrdíte na Rohlíku.
@@ -700,12 +893,19 @@ export default function Cart() {
       {header}
 
       <div className="stack cart__days">
-        <div className="cart__days-label">Objednat na dny</div>
+        <div className="row--between" style={{ alignItems: 'baseline' }}>
+          <div className="cart__days-label">Objednat na dny</div>
+          {!pristine && (
+            <button type="button" className="link-btn" onClick={startNew} disabled={busy}>
+              Začít nový nákup
+            </button>
+          )}
+        </div>
         <div className="chips">
           {chipDays.map((k) => {
             const d = dayInfo(k, todayKey);
             const on = days.includes(k);
-            const inCart = statusOf(k) === 'in_cart';
+            const st = statusOf(k);
             return (
               <button
                 type="button"
@@ -713,16 +913,28 @@ export default function Cart() {
                 className={`chip${on ? ' chip--on' : ''}`}
                 style={{ height: 38, padding: '0 13px 0 9px' }}
                 onClick={() => toggleDay(k)}
+                aria-pressed={on}
                 disabled={busy}
               >
                 <Icon name={on ? 'check_circle' : 'radio_button_unchecked'} />
                 {d.shortLabel}
-                {inCart && <span className="cart__incart">v košíku</span>}
+                {st === 'in_cart' && <span className="cart__incart">v košíku</span>}
+                {st === 'ordered' && <span className="cart__incart">objednáno</span>}
               </button>
             );
           })}
         </div>
       </div>
+
+      {notice === 'reverted' && step !== 'list' && (
+        <div className="cart-notice" role="status">
+          <Icon name="remove_shopping_cart" size={20} />
+          <span>
+            Košík na Rohlíku je prázdný a objednávka z něj nevznikla. Váš výběr zůstal – můžete ho vložit do košíku
+            znovu.
+          </span>
+        </div>
+      )}
 
       {nothingToBuy ? (
         <>
@@ -916,7 +1128,7 @@ export default function Cart() {
                         disabled={busy || chosen.length === 0}
                       >
                         <span>
-                          {step === 'filling' ? 'Vkládám do košíku…' : 'Vložit do košíku na Rohlíku'}
+                          {step === 'filling' ? 'Vkládám do košíku…' : submitLabel}
                         </span>
                         {step === 'filling' ? <Spinner small /> : <strong>{formatKc(total)}</strong>}
                       </button>

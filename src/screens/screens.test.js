@@ -19,6 +19,7 @@ import Notifications from './Notifications';
 import Settings from './Settings';
 import Login from './Login';
 import AppLayout from '../components/AppLayout';
+import { clearSession, loadSession, saveSession } from '../lib/shopSession';
 
 jest.mock('../firebase', () => ({ app: {}, db: {}, auth: {} }));
 jest.mock('firebase/database', () => ({}));
@@ -81,7 +82,12 @@ jest.mock('../services/rohlik', () => ({
       packaging: [],
     }),
   syncRohlikOrders: () => Promise.resolve(mockSync.next),
+  clearRohlikCart: (data) => {
+    mockClearCalls.push(data);
+    return Promise.resolve({ ok: true, removed: 1, failed: 0, cart: { ...mockCart, items: [], count: 0, total: 0, totalText: '0 Kč' }, days: data.days || [] });
+  },
 }));
+const mockClearCalls = [];
 const mockCheckoutCalls = [];
 const mockSync = { next: { result: 'none', days: [] } };
 const mockCart = {
@@ -227,6 +233,13 @@ const household = {
   saveProductPrefs: noop,
 };
 const auth = { user: { uid: 'u1' }, nickname: 'Vojta', login: noop, register: noop, logout: noop };
+
+// Screens persist the shopping session (localStorage + memory): every test starts without one.
+beforeEach(() => {
+  window.localStorage.clear();
+  window.sessionStorage.clear();
+  clearSession('h1');
+});
 
 function renderAt(path, element, routePath = path, hh = household) {
   return render(
@@ -435,6 +448,84 @@ test('Objednávka – Rohlík nepřipojený', () => {
   renderAt('/cart/checkout', <CartCheckout />, '/cart/checkout', inCartHousehold({ rohlik: null }));
   expect(screen.getByText('Účet Rohlík není připojený')).toBeInTheDocument();
   expect(screen.getByText('Objednávku jsem dokončil(a)')).toBeInTheDocument();
+});
+
+const sessionPicks = {
+  results: { špagety: { options: mockCandidates, note: null, query: 'Špagety' } },
+  picks: { špagety: { idx: 2, qty: 2, skip: false } },
+};
+
+test('Nákup – rozpracovaná objednávka: vybrané dny zůstanou, nabídne pokladnu (nahlášený scénář)', async () => {
+  // The user picked today and filled the cart 10 min ago; tomorrow stays pending.
+  saveSession('h1', {
+    daysSel: [today],
+    regSel: {},
+    extras: [],
+    step: 'checkout',
+    ...sessionPicks,
+    submittedDays: [today],
+    submittedAt: Date.now() - 600000,
+    addedIds: ['1'],
+  });
+  renderAt('/cart', <Cart />, '/cart', inCartHousehold());
+  expect(screen.getByText('Rozpracovaná objednávka')).toBeInTheDocument();
+  expect(screen.getByText('V košíku na Rohlíku')).toBeInTheDocument();
+  expect(screen.getByText('Pokračovat v pokladně')).toBeInTheDocument();
+  // never jumps to the other (pending) day
+  expect(screen.queryByText('Najít na Rohlíku')).toBeNull();
+  // "Vysypat košík" loads the cart and offers "only CappyMeal's" vs. "everything"
+  fireEvent.click(screen.getByText('Vysypat košík'));
+  expect(await screen.findByText('Vysypat celý košík (2)')).toBeInTheDocument();
+  fireEvent.click(screen.getByText('Vysypat celý košík (2)'));
+  expect(await screen.findByText('Vyberte produkty')).toBeInTheDocument();
+  expect(mockClearCalls[mockClearCalls.length - 1]).toEqual({ mode: 'all', days: [today] });
+  expect(screen.getByText('Vložit znovu do košíku')).toBeInTheDocument();
+  // the picks survived: variant 3 selected, 2 packs
+  expect(within(screen.getAllByRole('listbox').find((l) => l.getAttribute('aria-label') === 'Varianty – Špagety')).getAllByRole('option')[2]).toHaveAttribute('aria-selected', 'true');
+});
+
+test('Nákup – „Začít nový nákup“ smaže relaci, výchozí výběr bez dní v košíku', () => {
+  saveSession('h1', { daysSel: [today], regSel: {}, extras: [], step: 'checkout', ...sessionPicks, submittedDays: [today], submittedAt: Date.now() - 600000, addedIds: [] });
+  renderAt('/cart', <Cart />, '/cart', inCartHousehold());
+  fireEvent.click(screen.getByText('Začít nový nákup'));
+  expect(loadSession('h1')).toBeNull();
+  expect(screen.getByText('Najít na Rohlíku')).toBeInTheDocument();
+  // today (in the cart) is a visible chip but not selected; tomorrow (pending) is
+  const chips = screen.getAllByRole('button', { pressed: true }).filter((b) => b.classList.contains('chip--on'));
+  expect(chips.some((b) => b.textContent.includes('v košíku'))).toBe(false);
+  expect(screen.getByText('v košíku')).toBeInTheDocument();
+});
+
+test('Nákup – výběr přežije odchod z obrazovky', async () => {
+  const first = renderAt('/cart', <Cart />);
+  fireEvent.click(screen.getByText('Najít na Rohlíku'));
+  expect(await screen.findByText('Vyberte produkty')).toBeInTheDocument();
+  first.unmount(); // flushes the session
+  const s = loadSession('h1');
+  expect(s.step).toBe('matched');
+  expect(s.daysSel).toEqual(household.pendingDays);
+  renderAt('/cart', <Cart />);
+  expect(screen.getByText('Vyberte produkty')).toBeInTheDocument();
+});
+
+test('Objednávka – vysypat jen položky z CappyMeal, pak vložit znovu', async () => {
+  mockSync.next = { result: 'none', days: [] };
+  mockClearCalls.length = 0;
+  saveSession('h1', { daysSel: [today], regSel: {}, extras: [], step: 'checkout', ...sessionPicks, submittedDays: [today], submittedAt: Date.now() - 600000, addedIds: ['1'], checkout: { dayTab: 1 } });
+  renderAt('/cart/checkout', <CartCheckout />, '/cart/checkout', inCartHousehold());
+  expect(await screen.findByText('Mléko polotučné 1 l')).toBeInTheDocument();
+  // the day tab chosen before leaving the screen is restored
+  expect(screen.getAllByRole('tab')[1]).toHaveAttribute('aria-selected', 'true');
+  fireEvent.click(screen.getByText('Vysypat košík'));
+  expect(screen.getByText('Vysypat celý košík (2)')).toBeInTheDocument();
+  fireEvent.click(screen.getByText('Odebrat jen položky z CappyMeal (1)'));
+  expect(await screen.findByText('Vložit znovu do košíku')).toBeInTheDocument();
+  expect(mockClearCalls[0]).toEqual({ mode: 'added', productIds: ['1'], days: [today] });
+  // session kept, back on the product step
+  const s = loadSession('h1');
+  expect(s.submittedDays).toBeUndefined();
+  expect(s.step).toBe('matched');
+  expect(s.picks).toEqual(sessionPicks.picks);
 });
 
 test('Upozornění – jen seznam', () => {

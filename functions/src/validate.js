@@ -340,6 +340,29 @@ function validateUid(data) {
   return uid;
 }
 
+/**
+ * rohlikClearCart input: { mode: 'all' } | { mode: 'added', productIds: [digits] (1–80) }, optional
+ * days: ['YYYY-MM-DD'] (≤ 14) = the shopping session's days to put back to pending.
+ */
+function validateClearCart(data) {
+  const d = isPlainObject(data) ? data : {};
+  if (d.mode !== 'all' && d.mode !== 'added') throw new InputError('Neplatná akce.');
+  let days = [];
+  if (d.days !== undefined && d.days !== null) {
+    if (!Array.isArray(d.days) || d.days.length > 14 || !d.days.every((x) => isStr(x) && DATE_RE.test(x))) {
+      throw new InputError('Neplatné dny.');
+    }
+    days = [...new Set(d.days)];
+  }
+  if (d.mode === 'all') return { mode: 'all', days };
+  const ids = d.productIds;
+  if (!Array.isArray(ids) || !ids.length || ids.length > 80) {
+    throw new InputError('Neplatný seznam produktů (max. 80).');
+  }
+  const productIds = [...new Set(ids.map((x) => intId(x, 'ID produktu')))];
+  return { mode: 'added', productIds, days };
+}
+
 /** RTDB-safe key for an IP address. */
 function ipKey(ip) {
   const s = String(ip || 'unknown').slice(0, 64).replace(/[^A-Za-z0-9]/g, '_');
@@ -377,5 +400,6 @@ module.exports = {
   validateDayIndex,
   validateCheckoutLoad,
   validateCheckoutUpdate,
+  validateClearCart,
   ipKey,
 };

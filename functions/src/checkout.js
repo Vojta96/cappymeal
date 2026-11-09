@@ -400,6 +400,24 @@ function decideSync({ inCart, orders, cart, now }) {
   return { action: 'none' };
 }
 
+/**
+ * After the user emptied the cart from the app ("Vysypat košík"): which in_cart days go back to pending.
+ * Same rule as the sync revert, but immediate (no grace – the user did it on purpose):
+ * - cart now empty (any mode) → every in_cart day (nothing of any shopping is left in the cart);
+ * - mode 'added' and every CappyMeal product was removed → the session's days (`days`) that are in_cart
+ *   (all in_cart days when the client sent none); foreign items may stay in the cart;
+ * - cart unknown (get_cart failed) or some removals failed → nothing changes.
+ * inCart: ['YYYY-MM-DD'], cart: parsed get_cart | null, failed: number of failed removals.
+ */
+function decideClearRevert({ mode, inCart, days, cart, failed }) {
+  const inC = [...new Set(inCart || [])].sort();
+  if (!inC.length || !cart) return [];
+  if (cart.count === 0) return inC;
+  if (mode !== 'added' || failed > 0) return [];
+  const want = days && days.length ? new Set(days) : null;
+  return want ? inC.filter((d) => want.has(d)) : inC;
+}
+
 // ---------- operations (call = allowlisted callJson bound to one MCP session) ----------
 
 const CTX = {
@@ -409,9 +427,35 @@ const CTX = {
   update: 'Úprava nastavení objednávky před jejím potvrzením zákazníkem.',
   link: 'Zákazník potvrdí a zaplatí objednávku v rozhraní Rohlíku.',
   orders: 'Kontrola, zda zákazník dokončil objednávku.',
+  clear: 'Zákazník v aplikaci CappyMeal výslovně požádal o vysypání nákupního košíku.',
+  remove: 'Zákazník v aplikaci CappyMeal výslovně požádal o odebrání položek, které do košíku vložila aplikace.',
 };
 
 const loadCart = async (call) => parseCart(await call('get_cart', { context: CTX.cart }));
+
+/**
+ * "Vysypat košík" (explicit user action only): mode 'all' → clear_cart; mode 'added' → remove_cart_item per
+ * product id (best effort). → { removed, failed: [productId] }. A refused tool (allowlist) always throws.
+ */
+async function clearCart(call, { mode, productIds }) {
+  if (mode === 'all') {
+    await call('clear_cart', { context: CTX.clear });
+    return { removed: null, failed: [] };
+  }
+  let removed = 0;
+  const failed = [];
+  for (const id of productIds || []) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await call('remove_cart_item', { product_id: id, context: CTX.remove });
+      removed += 1;
+    } catch (e) {
+      if (e && e.code === 'TOOL_NOT_ALLOWED') throw e;
+      failed.push(id);
+    }
+  }
+  return { removed, failed };
+}
 
 async function loadCheckout(call) {
   const co = await call('get_checkout', { context: CTX.checkout });
@@ -538,6 +582,6 @@ const loadOrders = async (call) => parseOrders(await call('fetch_orders', { limi
 module.exports = {
   SETTABLE_PAYMENTS, PACKAGING, PACKAGING_LABEL, MAX_NOTE, CLEAR_GRACE_MS, SYNC_TOLERANCE_MS,
   formatKc, rohlikUrl, priceMode, parseCart, shortAddress, parseAddresses, parseCheckout, parseTimeslots,
-  parseOrderTime, parseOrders, decideSync, defaultUpdates, paymentLabel,
-  loadCart, loadCheckout, loadTimeslots, applyUpdate, applyDefaults, checkoutLink, loadOrders,
+  parseOrderTime, parseOrders, decideSync, decideClearRevert, defaultUpdates, paymentLabel,
+  loadCart, clearCart, loadCheckout, loadTimeslots, applyUpdate, applyDefaults, checkoutLink, loadOrders,
 };

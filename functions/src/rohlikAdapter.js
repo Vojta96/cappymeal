@@ -403,15 +403,18 @@ async function listTools(client, { refresh = false } = {}) {
 
 /**
  * The ONLY Rohlík MCP tools CappyMeal may call (search, cart, checkout preparation, read orders).
- * Never: submitting/cancelling orders, clear_cart (the cart may hold other things), claims, credits,
- * shopping lists, scheduled tasks, … Enforced in callAllowed – every MCP tool call goes through it.
+ * clear_cart and remove_cart_item empty the user's cart (it may hold other things): they are called ONLY from an
+ * explicit user action – remove_cart_item from the checkout screen's item stepper and from rohlikClearCart
+ * ('added'), clear_cart only from rohlikClearCart({ mode: 'all' }) after a confirmation in the app.
+ * Never: submitting/cancelling orders, claims, credits, shopping lists, scheduled tasks, … Enforced in
+ * callAllowed – every MCP tool call goes through it.
  */
 const ALLOWED_TOOLS = new Set([
   'batch_search_products', 'add_items_to_cart', 'get_cart', 'update_cart_item', 'remove_cart_item',
   'get_checkout', 'get_user_addresses', 'select_delivery_address_checkout', 'get_timeslots_checkout',
   'change_timeslot_checkout', 'reserve_timeslot', 'unreserve_timeslot', 'update_payment_method_checkout',
   'change_checkout_packaging', 'toggle_delivery_note_checkout', 'update_courier_instructions_checkout',
-  'get_checkout_link', 'fetch_orders',
+  'get_checkout_link', 'fetch_orders', 'clear_cart',
 ]);
 
 const DEFAULT_CONTEXT = 'Nákup surovin pro naplánovaná jídla v aplikaci CappyMeal.';

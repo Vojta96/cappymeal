@@ -260,14 +260,59 @@ test('checkout link must be https on rohlik.cz', () => {
 test('allowlist: forbidden tools never reach the client', async () => {
   const called = [];
   const client = { callTool: async (c) => { called.push(c); return { content: [{ type: 'text', text: '{"ok":true}' }] }; } };
-  for (const bad of ['clear_cart', 'cancel_order', 'remove_order_items', 'repeat_order', 'submit_claim', 'credit_add', 'set_checkout_as_suborder', 'delete_shopping_list', 'create_scheduled_task', 'submit_order']) {
+  for (const bad of ['cancel_order', 'remove_order_items', 'repeat_order', 'submit_claim', 'credit_add', 'set_checkout_as_suborder', 'delete_shopping_list', 'create_scheduled_task', 'submit_order']) {
     // eslint-disable-next-line no-await-in-loop
     await assert.rejects(a.callAllowed(client, bad, {}), (e) => e instanceof a.ToolNotAllowedError);
   }
   assert.strictEqual(called.length, 0);
   assert.deepStrictEqual(await a.callJson(client, 'get_cart', {}), { ok: true });
   assert.strictEqual(called[0].arguments.context.length > 10, true);
-  assert.strictEqual(a.ALLOWED_TOOLS.size, 18);
+  assert.strictEqual(a.ALLOWED_TOOLS.size, 19);
+  assert.ok(a.ALLOWED_TOOLS.has('clear_cart'));
+});
+
+test('clearCart: all → clear_cart; added → remove_cart_item per id, failures collected', async () => {
+  const calls = [];
+  const call = async (name, args) => {
+    calls.push({ name, args });
+    if (name === 'remove_cart_item' && args.product_id === 2) throw new Error('boom');
+    return {};
+  };
+  assert.deepStrictEqual(await co.clearCart(call, { mode: 'all' }), { removed: null, failed: [] });
+  assert.strictEqual(calls[0].name, 'clear_cart');
+  assert.ok(calls[0].args.context.length > 10);
+  calls.length = 0;
+  assert.deepStrictEqual(await co.clearCart(call, { mode: 'added', productIds: [1, 2, 3] }), { removed: 2, failed: [2] });
+  assert.deepStrictEqual(calls.map((c) => c.name), ['remove_cart_item', 'remove_cart_item', 'remove_cart_item']);
+  const refused = async () => { const e = new Error('no'); e.code = 'TOOL_NOT_ALLOWED'; throw e; };
+  await assert.rejects(co.clearCart(refused, { mode: 'added', productIds: [1] }), (e) => e.code === 'TOOL_NOT_ALLOWED');
+});
+
+test('decideClearRevert: immediate revert after emptying the cart', () => {
+  const inCart = ['2026-11-11', '2026-11-10', '2026-11-12'];
+  // whole cart empty → every in_cart day
+  assert.deepStrictEqual(co.decideClearRevert({ mode: 'all', inCart, days: ['2026-11-10'], cart: { count: 0 }, failed: 0 }),
+    ['2026-11-10', '2026-11-11', '2026-11-12']);
+  // only CappyMeal items removed, foreign items stay → the session's days
+  assert.deepStrictEqual(co.decideClearRevert({ mode: 'added', inCart, days: ['2026-11-10', '2026-11-11'], cart: { count: 2 }, failed: 0 }),
+    ['2026-11-10', '2026-11-11']);
+  assert.deepStrictEqual(co.decideClearRevert({ mode: 'added', inCart, days: [], cart: { count: 2 }, failed: 0 }), inCart.slice().sort());
+  // some removals failed / cart unknown / clear_cart left items → nothing changes
+  assert.deepStrictEqual(co.decideClearRevert({ mode: 'added', inCart, days: [], cart: { count: 2 }, failed: 1 }), []);
+  assert.deepStrictEqual(co.decideClearRevert({ mode: 'all', inCart, days: [], cart: null, failed: 0 }), []);
+  assert.deepStrictEqual(co.decideClearRevert({ mode: 'all', inCart, days: [], cart: { count: 1 }, failed: 0 }), []);
+  assert.deepStrictEqual(co.decideClearRevert({ mode: 'all', inCart: [], days: [], cart: { count: 0 }, failed: 0 }), []);
+});
+
+test('validators: rohlikClearCart', () => {
+  assert.deepStrictEqual(v.validateClearCart({ mode: 'all' }), { mode: 'all', days: [] });
+  assert.deepStrictEqual(v.validateClearCart({ mode: 'added', productIds: ['123', 123, 45], days: ['2026-11-10'] }),
+    { mode: 'added', productIds: [123, 45], days: ['2026-11-10'] });
+  for (const bad of [null, {}, { mode: 'everything' }, { mode: 'added' }, { mode: 'added', productIds: [] },
+    { mode: 'added', productIds: ['12a'] }, { mode: 'added', productIds: [-1] }, { mode: 'added', productIds: Array(81).fill(1) },
+    { mode: 'all', days: ['10. 11.'] }, { mode: 'all', days: 'x' }]) {
+    assert.throws(() => v.validateClearCart(bad), v.InputError);
+  }
 });
 
 test('tool errors: thrown as ToolError with a masked summary', async () => {

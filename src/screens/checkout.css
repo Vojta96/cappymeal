@@ -73,6 +73,12 @@
   padding: 6px 2px;
 }
 
+/* "Vysypat košík" under the cart items */
+.co-clear {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
 /* cart items */
 .co-items {
   display: flex;

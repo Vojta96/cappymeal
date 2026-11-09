@@ -79,7 +79,8 @@ async function requireMember(request) {
   if (!hid) throw fail('permission-denied', 'Nejste členem žádné domácnosti.', 'NOT_MEMBER');
   const member = (await db().ref(`households/${hid}/members/${uid}`).get()).val();
   if (!member) throw fail('permission-denied', 'Nejste členem této domácnosti.', 'NOT_MEMBER');
-  return { uid, hid, nickname: member.nickname || 'Někdo' };
+  // Display form (server-written activity texts, Rohlík status "by"): capitalized like the client shows names.
+  return { uid, hid, nickname: v.capitalizeFirst(member.nickname).slice(0, 32) || 'Někdo' };
 }
 
 /** Sets households/{hid}/owner to the earliest member if it is missing. Returns the owner uid. */
@@ -737,6 +738,43 @@ exports.rohlikCheckoutUpdate = onCall(ROHLIK, handle('rohlikCheckoutUpdate', asy
     out.checkout = await co.loadCheckout(call);
     out.checkout.warnings = [...warnings, ...out.checkout.warnings].slice(0, 6);
     return out;
+  });
+}));
+
+/**
+ * "Vysypat košík" (explicit user action, confirmed in the app): mode 'all' → clear_cart, mode 'added' → only the
+ * products CappyMeal put in this shopping (remove_cart_item each, best effort). Afterwards the in_cart days go back
+ * to pending right away (decideClearRevert) and an activity entry is written.
+ */
+exports.rohlikClearCart = onCall(ROHLIK, handle('rohlikClearCart', async (request) => {
+  const input = v.validateClearCart(request.data);
+  return withCheckout(request, 'rohlikClearCart', 10, async (call, m) => {
+    const { removed, failed } = await co.clearCart(call, input);
+    if (failed.length) console.warn('rohlikClearCart: failed removals', failed.length);
+    let cart = null;
+    try {
+      cart = await withImages(await co.loadCart(call));
+    } catch (e) {
+      if (!(e instanceof rohlik.ToolError)) throw e;
+      console.warn('rohlikClearCart: get_cart failed:', e.detail);
+    }
+    const today = rem.pragueDateString(new Date());
+    const inCart = Object.entries((await db().ref(`households/${m.hid}/orders`).orderByKey().startAt(today).get()).val() || {})
+      .filter(([, o]) => o && o.status === 'in_cart')
+      .map(([day]) => day);
+    const revert = co.decideClearRevert({ mode: input.mode, inCart, days: input.days, cart, failed: failed.length });
+    const updates = {};
+    revert.forEach((d) => { updates[`households/${m.hid}/orders/${d}`] = null; });
+    if (input.mode === 'all' || removed > 0) {
+      const at = Date.now();
+      const actKey = db().ref(`households/${m.hid}/activity`).push().key;
+      const text = input.mode === 'all' || (cart && cart.count === 0)
+        ? `${m.nickname} vysypal(a) košík na Rohlíku`
+        : `${m.nickname} odebral(a) nákup z CappyMeal z košíku na Rohlíku`;
+      updates[`households/${m.hid}/activity/${actKey}`] = { type: 'order', text: text.slice(0, 200), by: m.uid, at };
+    }
+    if (Object.keys(updates).length) await db().ref().update(updates);
+    return { ok: failed.length === 0, removed, failed: failed.length, cart, days: revert };
   });
 }));
 

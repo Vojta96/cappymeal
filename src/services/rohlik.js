@@ -83,6 +83,17 @@ export const getRohlikTimeslots = (day) => callFunction('rohlikTimeslots', { day
 /** action: selectAddress | selectSlot | setPayment | setPackaging | setCourierNote | toggleDeliveryNote | updateCartItem | removeCartItem */
 export const updateRohlikCheckout = (action, payload = {}) =>
   callFunction('rohlikCheckoutUpdate', { action, ...payload }, LONG);
+/**
+ * "Vysypat košík" (explicit user action, a write – never retried): mode 'all' empties the whole Rohlík cart,
+ * 'added' removes only productIds (what CappyMeal put there in this shopping). days = the shopping's days.
+ * → { ok, removed, failed, cart, days (put back to pending) }
+ */
+export const clearRohlikCart = ({ mode, productIds, days }) => {
+  const data = { mode: mode === 'added' ? 'added' : 'all' };
+  if (mode === 'added') data.productIds = (productIds || []).map(String).filter((id) => /^\d{1,15}$/.test(id)).slice(0, 80);
+  if (days && days.length) data.days = days.slice(0, 14);
+  return callFunction('rohlikClearCart', data, LONG);
+};
 export const getRohlikCheckoutLink = () => callFunction('rohlikCheckoutLink', undefined, LONG);
 /** Settings: { addresses[{ id, label }], payments[{ id, label, settable }], packaging[{ id, label }] } */
 export const getRohlikDeliveryOptions = () => callFunction('rohlikDeliveryOptions', undefined, LONG);
