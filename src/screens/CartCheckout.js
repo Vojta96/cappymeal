@@ -6,6 +6,7 @@ import { dayInfo, plural } from '../lib/dates';
 import { formatKc } from '../lib/meals';
 import {
   COURIER_NOTE_MAX,
+  SETTABLE_PAYMENTS,
   SLOT_DAYS,
   dayTabLabel,
   defaultDayTab,
@@ -709,6 +710,10 @@ export default function CartCheckout() {
     </Section>
   );
 
+  // Paying on delivery (card / cash at the door) → nothing is paid on Rohlík, the order is only confirmed.
+  const selectedPayment =
+    checkout && checkout.payment && (checkout.payment.methods || []).find((m) => m.selected);
+  const payOnDelivery = !!(selectedPayment && SETTABLE_PAYMENTS.includes(selectedPayment.id));
   const confirmBtn = (
     <button
       type="button"
@@ -717,7 +722,7 @@ export default function CartCheckout() {
       disabled={loading || cartEmpty || !!busy}
     >
       <Icon name="open_in_new" />
-      Potvrdit a zaplatit na Rohlíku
+      {payOnDelivery ? 'Potvrdit objednávku na Rohlíku' : 'Potvrdit a zaplatit na Rohlíku'}
     </button>
   );
 
