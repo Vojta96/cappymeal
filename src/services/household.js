@@ -7,7 +7,7 @@ import { capitalizeFirst } from '../lib/text';
 
 export const DEFAULT_SETTINGS = { remind3d: true, remindDaily: true, remindBoth: true, remindHour: 9 };
 
-function seedRecipeList() {
+export function seedRecipeList() {
   return seedRecipes.map((m) => ({
     name: m.name,
     emoji: m.emoji || '🍽️',
@@ -18,6 +18,27 @@ function seedRecipeList() {
     builtinImage: SEED_IMAGE_BY_ID[m.id] || null,
   }));
 }
+
+/** Seed recipes as stored in households/{hid}/recipes/{rid} (mirrors validateRecipe in functions). */
+export function seedRecipeRecords(uid, now) {
+  return seedRecipeList().map((r) => {
+    const rec = {
+      name: r.name,
+      emoji: r.emoji,
+      type: r.type,
+      preparation: r.preparation,
+      instructions: r.instructions,
+      hasPhoto: false,
+      createdBy: uid,
+      updatedAt: now,
+    };
+    if (r.ingredients.length) rec.ingredients = r.ingredients;
+    if (r.builtinImage) rec.builtinImage = r.builtinImage;
+    return rec;
+  });
+}
+
+export const SEED_RECIPE_COUNT = seedRecipes.length;
 
 export async function createHousehold(name) {
   const householdName = capitalizeFirst(name);

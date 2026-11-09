@@ -1,7 +1,8 @@
 import pancakes from '../assets/recipes/pancakes.png';
 import soup from '../assets/recipes/soup.png';
 
+// Kept so recipes created from older seed sets (builtinImage: 'pancakes' | 'soup') still render.
 export const BUILTIN_IMAGES = { pancakes, soup };
 
-// Seed recipe id -> bundled image key (MealsList ids 1 and 10, as in the design prototype)
-export const SEED_IMAGE_BY_ID = { 1: 'pancakes', 10: 'soup' };
+// The current seed set bundles no images.
+export const SEED_IMAGE_BY_ID = {};

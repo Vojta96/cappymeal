@@ -1,6 +1,7 @@
 // Realtime Database rules tests. Run with: npm run test:rules
 // (starts the Database emulator via `firebase emulators:exec`; needs Java).
 const test = require('node:test');
+const assert = require('node:assert');
 const { readFileSync } = require('fs');
 const path = require('path');
 const {
@@ -175,6 +176,38 @@ test('photos: new top-level path, legacy path delete-only', async () => {
   await assertSucceeds(get(ref(bob, `households/${HID}/photos/r1`)));
   await assertFails(set(ref(bob, `households/${HID}/photos/r1`), ok));
   await assertSucceeds(update(ref(bob), {
+    [`householdPhotos/${HID}/r1`]: null,
+    [`households/${HID}/photos/r1`]: null,
+  }));
+});
+
+test('member replaces all recipes in one multi-path update (delete + photos + plan + new set)', async () => {
+  const bob = db('bob');
+  await assertSucceeds(set(ref(bob, `households/${HID}/plan/${today}/lunch`), 'r1'));
+  await assertSucceeds(set(ref(bob, `householdPhotos/${HID}/r1`), 'data:image/jpeg;base64,AAAA'));
+  const placeholder = { name: 'Snídaně od Páji', emoji: '🍽️', type: 'breakfast', preparation: '',
+    instructions: 'Recept doplňte (poslala Pája).', hasPhoto: false, createdBy: 'bob', updatedAt: 5 };
+  await assertSucceeds(update(ref(bob), {
+    [`households/${HID}/recipes/r1`]: null,
+    [`householdPhotos/${HID}/r1`]: null,
+    [`households/${HID}/photos/r1`]: null,
+    [`households/${HID}/plan/${today}/lunch`]: null,
+    [`households/${HID}/recipes/n1`]: placeholder,
+    [`households/${HID}/recipes/n2`]: { ...recipe, createdBy: 'bob', updatedAt: 5 },
+    [`households/${HID}/activity/a1`]: { type: 'recipe', text: 'Bob nahradil(a) recepty novou sadou', by: 'bob', at: 5 },
+  }));
+  const snap = await get(ref(bob, `households/${HID}/recipes`));
+  assert.deepStrictEqual(Object.keys(snap.val()).sort(), ['n1', 'n2']);
+  assert.strictEqual((await get(ref(bob, `householdPhotos/${HID}/r1`))).exists(), false);
+  // an outsider cannot do it
+  await assertFails(update(ref(db('eve')), { [`households/${HID}/recipes/n1`]: null }));
+});
+
+test('member deletes a recipe together with its photo', async () => {
+  const bob = db('bob');
+  await assertSucceeds(set(ref(bob, `householdPhotos/${HID}/r1`), 'data:image/jpeg;base64,AAAA'));
+  await assertSucceeds(update(ref(bob), {
+    [`households/${HID}/recipes/r1`]: null,
     [`householdPhotos/${HID}/r1`]: null,
     [`households/${HID}/photos/r1`]: null,
   }));

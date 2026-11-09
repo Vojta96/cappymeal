@@ -22,7 +22,7 @@ import { db } from '../firebase';
 import { useAuth } from './AuthContext';
 import { dateKey, dayInfo, horizonKeys } from '../lib/dates';
 import { SLOT_BY_KEY, dayStatus, buildAlert } from '../lib/meals';
-import { DEFAULT_SETTINGS, ensureHouseholdMeta } from '../services/household';
+import { DEFAULT_SETTINGS, ensureHouseholdMeta, seedRecipeRecords } from '../services/household';
 import { capitalizeFirst } from '../lib/text';
 
 export const HouseholdContext = createContext(null);
@@ -264,6 +264,29 @@ export function HouseholdProvider({ hid, children }) {
     [base, hid, recipes, plan, todayKey, nickname, logActivity]
   );
 
+  // Owner action: drop every recipe (+ photos, upcoming plan slots using them) and seed the default set, in one write.
+  const replaceRecipesWithSeed = useCallback(async () => {
+    const updates = {};
+    const old = new Set(Object.keys(recipes));
+    old.forEach((rid) => {
+      updates[`${base}/recipes/${rid}`] = null;
+      updates[photoPath(hid, rid)] = null;
+      updates[legacyPhotoPath(hid, rid)] = null;
+    });
+    Object.entries(plan).forEach(([day, slots]) => {
+      if (day < todayKey || !slots) return;
+      Object.entries(slots).forEach(([slot, v]) => {
+        if (old.has(v)) updates[`${base}/plan/${day}/${slot}`] = null;
+      });
+    });
+    const now = Date.now();
+    seedRecipeRecords(uid, now).forEach((rec) => {
+      updates[`${base}/recipes/${push(ref(db, `${base}/recipes`)).key}`] = rec;
+    });
+    await update(ref(db), updates);
+    logActivity('recipe', `${nickname} nahradil(a) recepty novou sadou`);
+  }, [base, hid, recipes, plan, todayKey, uid, nickname, logActivity]);
+
   const togglePantry = useCallback(
     (key, value) => set(ref(db, `${base}/pantry/${key}`), value),
     [base]
@@ -354,6 +377,7 @@ export function HouseholdProvider({ hid, children }) {
       removeMeal,
       saveRecipe,
       deleteRecipe,
+      replaceRecipesWithSeed,
       togglePantry,
       setOrderStatus,
       clearOrder,
@@ -367,7 +391,7 @@ export function HouseholdProvider({ hid, children }) {
     [
       hid, uid, nickname, ready, todayKey, horizon, recipes, plan, orders, pantry, members, settings,
       data.joinCode, data.name, activity, alert, pendingDays, statusOf, requestPhoto, photoFor, setMeal, removeMeal,
-      saveRecipe, deleteRecipe, togglePantry, setOrderStatus, clearOrder, updateSettings, updateHouseholdName, logActivity,
+      saveRecipe, deleteRecipe, replaceRecipesWithSeed, togglePantry, setOrderStatus, clearOrder, updateSettings, updateHouseholdName, logActivity,
       regulars, owner, isOwner, data.rohlik, addRegular, updateRegular, deleteRegular,
     ]
   );

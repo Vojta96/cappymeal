@@ -4,7 +4,7 @@ import { useHousehold } from '../context/HouseholdContext';
 import { useAuth } from '../context/AuthContext';
 import { Icon, Spinner, Toast, Toggle } from '../components/ui';
 import { enablePush, pushSupported } from '../services/push';
-import { removeMember, rotateJoinCode } from '../services/household';
+import { removeMember, rotateJoinCode, SEED_RECIPE_COUNT } from '../services/household';
 import RohlikAccount from '../components/RohlikAccount';
 import { capitalizeFirst, householdDisplayName, initial } from '../lib/text';
 import './notifications.css';
@@ -31,7 +31,7 @@ const isStandalone = () =>
 export default function Settings() {
   const navigate = useNavigate();
   const { logout, nickname } = useAuth();
-  const { hid, uid, members, joinCode, name, settings, owner, isOwner, updateSettings, updateHouseholdName } =
+  const { hid, uid, members, joinCode, name, settings, owner, isOwner, updateSettings, updateHouseholdName, replaceRecipesWithSeed } =
     useHousehold();
   const [ownerBusy, setOwnerBusy] = useState(null); // 'code' | member uid
   const [nameDraft, setNameDraft] = useState(capitalizeFirst(name));
@@ -99,6 +99,20 @@ export default function Settings() {
       setToast('Člen byl odebrán');
     } catch (e) {
       setToast(e.message || 'Člena se nepodařilo odebrat');
+    } finally {
+      setOwnerBusy(null);
+    }
+  };
+
+  const replaceRecipes = async () => {
+    // eslint-disable-next-line no-alert
+    if (!window.confirm('Nahradit všechny recepty novou výchozí sadou? Stávající recepty včetně fotek se smažou a z plánu zmizí odstraněná jídla.')) return;
+    setOwnerBusy('recipes');
+    try {
+      await replaceRecipesWithSeed();
+      setToast('Recepty byly nahrazeny novou sadou');
+    } catch (e) {
+      setToast('Recepty se nepodařilo nahradit');
     } finally {
       setOwnerBusy(null);
     }
@@ -227,6 +241,23 @@ export default function Settings() {
               </div>
             )}
           </div>
+
+          {isOwner && (
+            <div className="stack">
+              <h2 className="h-section">Recepty</h2>
+              <div className="list-card">
+                <div className="list-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12 }}>
+                  <div className="list-row__sub">
+                    Nahradit všechny recepty v domácnosti novou výchozí sadou ({SEED_RECIPE_COUNT} receptů). Smažou se i
+                    jejich fotky a z plánu zmizí odstraněná jídla.
+                  </div>
+                  <button type="button" className="btn btn--soft btn--sm" onClick={replaceRecipes} disabled={!!ownerBusy}>
+                    {ownerBusy === 'recipes' ? <Spinner small /> : 'Nahradit recepty novou sadou'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="stack">
             <h2 className="h-section">Účet Rohlík</h2>
