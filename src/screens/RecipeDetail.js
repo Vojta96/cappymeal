@@ -5,7 +5,7 @@ import { useRecipeImageFull } from '../components/Thumb';
 import BottomSheet from '../components/BottomSheet';
 import { Icon } from '../components/ui';
 import { dayInfo } from '../lib/dates';
-import { SLOT_BY_KEY, TYPE_LABEL } from '../lib/meals';
+import { SLOT_BY_KEY, TYPE_LABEL, recipeTypes } from '../lib/meals';
 import { useIsDesktop } from '../hooks/useMediaQuery';
 import './recipes.css';
 
@@ -16,11 +16,14 @@ export default function RecipeDetail() {
   const r = recipes[id];
   const { src: img, loading: imgLoading } = useRecipeImageFull(id);
   const [sheet, setSheet] = useState(false);
+  const [pickedSlot, setPickedSlot] = useState(null);
   const closeSheet = useCallback(() => setSheet(false), []);
   const isDesktop = useIsDesktop();
 
   if (!r) return <Navigate to="/recipes" replace />;
-  const slot = SLOT_BY_KEY[r.type] || SLOT_BY_KEY.lunch;
+  const types = recipeTypes(r);
+  const chosen = types.includes(pickedSlot) ? pickedSlot : r.type;
+  const slot = SLOT_BY_KEY[chosen] || SLOT_BY_KEY.lunch;
 
   const back = () => {
     if (window.history.state && window.history.state.idx > 0) navigate(-1);
@@ -32,11 +35,26 @@ export default function RecipeDetail() {
         open={sheet}
         onClose={closeSheet}
         title="Na který den?"
-        sub={`${r.name} · ${TYPE_LABEL[r.type] || ''}`}
+        sub={`${r.name} · ${types.length > 1 ? 'vyberte jídlo' : TYPE_LABEL[r.type] || ''}`}
       >
+        {types.length > 1 && (
+          <div className="chips" style={{ marginBottom: 12 }}>
+            {types.map((k) => (
+              <button
+                type="button"
+                key={k}
+                className={`chip${chosen === k ? ' chip--on' : ''}`}
+                aria-pressed={chosen === k}
+                onClick={() => setPickedSlot(k)}
+              >
+                {TYPE_LABEL[k]}
+              </button>
+            ))}
+          </div>
+        )}
         {horizon.map((k) => {
           const d = dayInfo(k, todayKey);
-          const ex = plan[k] && plan[k][r.type];
+          const ex = plan[k] && plan[k][chosen];
           const er = ex && ex !== id && recipes[ex];
           const same = ex === id;
           return (
@@ -46,7 +64,7 @@ export default function RecipeDetail() {
               className="sheet-item"
               disabled={same}
               onClick={async () => {
-                await setMeal(k, r.type, id);
+                await setMeal(k, chosen, id);
                 navigate('/plan', { state: { day: k } });
               }}
             >
@@ -93,7 +111,9 @@ export default function RecipeDetail() {
           <div className="stack" style={{ gap: 28, paddingTop: 8 }}>
             <div className="stack" style={{ gap: 14 }}>
               <div className="chips" style={{ gap: 6 }}>
-                <span className="tag">{TYPE_LABEL[r.type] || 'Jídlo'}</span>
+                {(types.length ? types : [r.type]).map((k) => (
+                  <span className="tag" key={k}>{TYPE_LABEL[k] || 'Jídlo'}</span>
+                ))}
                 {r.preparation && <span className="tag">{r.preparation}</span>}
               </div>
               <h1 className="detail__name">{r.name}</h1>
@@ -149,7 +169,9 @@ export default function RecipeDetail() {
       <div className="detail__body">
         <div className="stack" style={{ gap: 10 }}>
           <div className="chips" style={{ gap: 6 }}>
-            <span className="tag">{TYPE_LABEL[r.type] || 'Jídlo'}</span>
+            {(types.length ? types : [r.type]).map((k) => (
+                  <span className="tag" key={k}>{TYPE_LABEL[k] || 'Jídlo'}</span>
+                ))}
             {r.preparation && <span className="tag">{r.preparation}</span>}
           </div>
           <h1 className="detail__name">{r.name}</h1>

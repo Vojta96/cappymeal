@@ -1,21 +1,28 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useHousehold } from '../context/HouseholdContext';
 import BottomSheet from '../components/BottomSheet';
+import MealPicker from '../components/MealPicker';
 import Thumb from '../components/Thumb';
 import { Icon } from '../components/ui';
 import { dayInfo, plural, HORIZON_DAYS } from '../lib/dates';
 import { SLOTS, SLOT_BY_KEY, STATUS } from '../lib/meals';
+import { EMPTY, SAME } from '../lib/planModel';
 import { readStorage, writeStorage } from '../lib/storage';
 import { useIsDesktop } from '../hooks/useMediaQuery';
 import './plan.css';
 
 const VIEW_KEY = 'cappymeal-plan-view';
 
-const startFor = (idx, range) => (range === '3' ? Math.min(Math.max(idx, 0), HORIZON_DAYS - 3) : idx >= 7 ? 7 : 0);
+const lenOf = (range) => (range === '3' ? 3 : 7);
+const clampStart = (s, range) => Math.min(Math.max(s, 0), HORIZON_DAYS - lenOf(range));
+const startFor = (idx, range) => clampStart(idx, range);
 
 export default function Plan() {
-  const { todayKey, horizon, plan, orders, recipes, statusOf, setMeal, removeMeal } = useHousehold();
+  const {
+    todayKey, horizon, plan, memberPlan, fromTemplate, weekTemplate, memberIds, memberName, slotMeals, orders,
+    recipes, statusOf, setMeal, removeMeal, startRepeat, stopRepeat,
+  } = useHousehold();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -23,12 +30,16 @@ export default function Plan() {
     const saved = readStorage('sessionStorage', VIEW_KEY, null);
     const base = saved && horizon.includes(saved.selDay) ? saved : { range: '7', selDay: todayKey };
     const idx = horizon.indexOf(base.selDay);
-    return { range: base.range, selDay: base.selDay, start: startFor(idx, base.range) };
+    const start = typeof base.start === 'number' && base.start <= idx && idx < base.start + lenOf(base.range)
+      ? clampStart(base.start, base.range)
+      : startFor(idx, base.range);
+    return { range: base.range, selDay: base.selDay, start };
   });
-  const [sheet, setSheet] = useState(null); // { slot, day }
+  const [sheet, setSheet] = useState(null); // { slot, day, uid }
+  const [removing, setRemoving] = useState(null); // { day, slot, uids: null | string[], label }
+  const [repeatAsk, setRepeatAsk] = useState(false);
   const isDesktop = useIsDesktop();
-  const [sheetQ, setSheetQ] = useState('');
-  const [allTypes, setAllTypes] = useState(false);
+  const multi = memberIds.length > 1;
 
   // Jump to a day passed via navigation state (from Přehled / recipe detail).
   const targetDay = location.state && location.state.day;
@@ -45,10 +56,10 @@ export default function Plan() {
   }, [horizon, view.selDay]);
 
   useEffect(() => {
-    writeStorage('sessionStorage', VIEW_KEY, { range: view.range, selDay: view.selDay });
-  }, [view.range, view.selDay]);
+    writeStorage('sessionStorage', VIEW_KEY, { range: view.range, selDay: view.selDay, start: view.start });
+  }, [view.range, view.selDay, view.start]);
 
-  const len = view.range === '3' ? 3 : 7;
+  const len = lenOf(view.range);
   const maxStart = HORIZON_DAYS - len;
   const start = Math.min(view.start, maxStart);
   const vis = horizon.slice(start, start + len).map((k) => dayInfo(k, todayKey));
@@ -57,100 +68,163 @@ export default function Plan() {
   const sel = dayInfo(view.selDay, todayKey);
   const selStatus = statusOf(view.selDay);
   const SS = STATUS[selStatus];
-  const dayPlan = plan[view.selDay] || {};
   const order = orders[view.selDay];
   const changedAfterOrder = order && order.planChanged && (selStatus === 'ordered' || selStatus === 'in_cart');
   const visPend = vis.filter((d) => statusOf(d.key) === 'pending').map((d) => d.key);
+  const repeatsOn = (day) => !!weekTemplate && day >= weekTemplate.from;
+  // The 7 days that "Opakovat každý týden" saves: the visible week (or the 7 days from the visible start).
+  const repeatStart = Math.min(start, HORIZON_DAYS - 7);
+  const repeatDays = horizon.slice(repeatStart, repeatStart + 7);
 
   const setRange = (range) => {
     const idx = horizon.indexOf(view.selDay);
     setView((v) => ({ ...v, range, start: startFor(idx, range) }));
   };
+  // Arrows move by one day; the selected day stays visible.
   const shift = (dir) => {
-    const s = Math.min(maxStart, Math.max(0, start + dir * len));
-    setView((v) => ({ ...v, start: s, selDay: horizon[s] }));
+    const s = clampStart(start + dir, view.range);
+    setView((v) => {
+      const idx = horizon.indexOf(v.selDay);
+      const selIdx = Math.min(Math.max(idx, s), s + len - 1);
+      return { ...v, start: s, selDay: horizon[selIdx] };
+    });
   };
 
   const closeSheet = useCallback(() => setSheet(null), []);
-  const openSheet = (slot, day = view.selDay) => {
-    setSheetQ('');
-    setAllTypes(false);
-    setSheet({ slot, day });
+  const closeRemoving = useCallback(() => setRemoving(null), []);
+  const closeRepeat = useCallback(() => setRepeatAsk(false), []);
+  const openSheet = (slot, day = view.selDay, uid = null) => setSheet({ slot, day, uid });
+
+  const valueFor = (uid) => {
+    if (!sheet) return undefined;
+    if (!uid) return plan[sheet.day] && plan[sheet.day][sheet.slot];
+    const m = memberPlan[sheet.day] && memberPlan[sheet.day][sheet.slot];
+    return m ? m[uid] : undefined;
   };
 
-  const sheetItems = useMemo(() => {
-    if (!sheet) return [];
-    const q = sheetQ.trim().toLowerCase();
-    return Object.entries(recipes)
-      .filter(([, r]) => (allTypes || r.type === sheet.slot) && (!q || r.name.toLowerCase().includes(q)))
-      .sort((a, b) => a[1].name.localeCompare(b[1].name, 'cs'));
-  }, [sheet, sheetQ, allTypes, recipes]);
+  const doRemove = (r, scope) => {
+    if (r.uids) r.uids.forEach((u) => setMeal(r.day, r.slot, SAME, { uid: u, scope }));
+    else removeMeal(r.day, r.slot, { scope });
+    setRemoving(null);
+  };
+  /** uids: null = the shared meal, else the members whose own meal / skip is undone. */
+  const askRemove = (day, slot, uids, label) => {
+    const r = { day, slot, uids, label };
+    if (repeatsOn(day)) setRemoving(r);
+    else doRemove(r, 'day');
+  };
 
-  const slotMeta = sheet ? SLOT_BY_KEY[sheet.slot] : null;
+  const whoLabel = (e) => {
+    if (!multi) return '';
+    if (e.shared) return e.uids.length < memberIds.length ? (e.uids.length ? `Ostatní` : '') : '';
+    return e.uids.map(memberName).join(', ');
+  };
+  const skippers = (day, slot) => {
+    const m = memberPlan[day] && memberPlan[day][slot];
+    return m ? memberIds.filter((u) => m[u] === EMPTY) : [];
+  };
+  const isPattern = (day, slot) => !!(fromTemplate[day] && fromTemplate[day][slot]);
 
-  const sheetEl = (
-      <BottomSheet
-        open={!!sheet}
-        onClose={closeSheet}
-        title={slotMeta ? `Vybrat ${slotMeta.acc}` : ''}
-        sub={sheet ? dayInfo(sheet.day).long : ''}
-        head={
-          <>
-            <div className="search sheet-search">
-              <Icon name="search" size={20} />
-              <input
-                value={sheetQ}
-                onChange={(e) => setSheetQ(e.target.value)}
-                placeholder="Hledat"
-                aria-label="Hledat recept"
-              />
-            </div>
-            <div className="chips">
-              <button
-                type="button"
-                className={`chip${!allTypes ? ' chip--on' : ''}`}
-                style={{ height: 32 }}
-                onClick={() => setAllTypes(false)}
-              >
-                {slotMeta ? slotMeta.label : ''}
-              </button>
-              <button
-                type="button"
-                className={`chip${allTypes ? ' chip--on' : ''}`}
-                style={{ height: 32 }}
-                onClick={() => setAllTypes(true)}
-              >
-                Všechny recepty
-              </button>
-            </div>
-          </>
-        }
-      >
-        {sheetItems.map(([rid, r]) => (
-          <button
-            type="button"
-            key={rid}
-            className="sheet-item"
-            onClick={() => {
-              setMeal(sheet.day, sheet.slot, rid);
-              setSheet(null);
-            }}
-          >
-            <Thumb rid={rid} size={50} radius={13} emojiSize={24} lazy />
-            <div className="list-row__body">
-              <div className="list-row__title">{r.name}</div>
-              <div className="list-row__sub">{r.preparation}</div>
-            </div>
-            <Icon name="add_circle" className="sheet-item__add" />
-          </button>
-        ))}
-        {sheetItems.length === 0 && (
-          <div className="muted" style={{ textAlign: 'center', padding: '24px 0', fontSize: 14 }}>
-            Nic nenalezeno.
-          </div>
-        )}
-      </BottomSheet>
+  const pickerEl = (
+    <MealPicker
+      sheet={sheet}
+      onClose={closeSheet}
+      recipes={recipes}
+      memberIds={memberIds}
+      memberName={memberName}
+      valueFor={valueFor}
+      repeats={!!sheet && repeatsOn(sheet.day)}
+      onPick={(value, opts) => {
+        setMeal(sheet.day, sheet.slot, value, opts);
+        setSheet(null);
+      }}
+    />
   );
+
+  const removeEl = (
+    <BottomSheet
+      open={!!removing}
+      onClose={closeRemoving}
+      title={removing ? `Odebrat ${SLOT_BY_KEY[removing.slot].acc}?` : ''}
+      sub={removing ? `${dayInfo(removing.day).long}${removing.label ? ` · ${removing.label}` : ''}` : ''}
+    >
+      <div className="muted" style={{ fontSize: 14, paddingBottom: 6 }}>
+        Plán se opakuje každý týden. Změnit jen tento den, nebo všechny další týdny?
+      </div>
+      <button type="button" className="btn btn--dark" onClick={() => doRemove(removing, 'day')}>
+        Jen tento den
+      </button>
+      <button type="button" className="btn btn--soft" onClick={() => doRemove(removing, 'week')}>
+        <Icon name="repeat" size={20} />
+        Každý týden
+      </button>
+    </BottomSheet>
+  );
+
+  const repeatEl = (
+    <BottomSheet open={repeatAsk} onClose={closeRepeat} title="Opakovat každý týden?">
+      <div className="muted" style={{ fontSize: 14, paddingBottom: 6 }}>
+        Jídla z dnů {dayInfo(repeatDays[0]).shortLabel} – {dayInfo(repeatDays[6]).shortLabel} (včetně jídel pro
+        jednotlivé členy) se budou opakovat každý týden, dokud opakování nezrušíte. Prázdný den zůstane prázdný.
+        {weekTemplate ? ' Nahradí se tím současné opakování.' : ''}
+      </div>
+      <button
+        type="button"
+        className="btn btn--dark"
+        onClick={() => {
+          startRepeat(repeatDays);
+          setRepeatAsk(false);
+        }}
+      >
+        <Icon name="repeat" size={20} />
+        Opakovat každý týden
+      </button>
+    </BottomSheet>
+  );
+
+  const onStopRepeat = () => {
+    if (!window.confirm('Zrušit opakování týdne? Dny bez objednávky, které plnilo opakování, se vyprázdní.')) return;
+    stopRepeat();
+  };
+
+  const repeatBar = weekTemplate ? (
+    <div className="plan__repeat plan__repeat--on">
+      <Icon name="repeat" size={19} />
+      <span className="plan__repeat-text">
+        Týden se opakuje (od {dayInfo(weekTemplate.from).shortLabel})
+      </span>
+      <button type="button" className="link-btn" onClick={() => setRepeatAsk(true)}>
+        Změnit
+      </button>
+      <button type="button" className="link-btn" onClick={onStopRepeat}>
+        Zrušit
+      </button>
+    </div>
+  ) : (
+    <button type="button" className="plan__repeat" onClick={() => setRepeatAsk(true)}>
+      <Icon name="repeat" size={19} />
+      <span className="plan__repeat-text">Opakovat tento týden každý týden</span>
+    </button>
+  );
+
+  const skipLine = (day, slot, compact) => {
+    const sk = skippers(day, slot);
+    if (!multi || !sk.length) return null;
+    return (
+      <div className={`plan__skip${compact ? ' plan__skip--compact' : ''}`}>
+        <Icon name="no_meals" size={15} />
+        <span className="ellipsis">Nejí: {sk.map(memberName).join(', ')}</span>
+        <button
+          type="button"
+          className="plan__skip-undo"
+          aria-label="Zrušit vynechání"
+          onClick={() => askRemove(day, slot, sk, `Nejí: ${sk.map(memberName).join(', ')}`)}
+        >
+          <Icon name="close" size={15} />
+        </button>
+      </div>
+    );
+  };
 
   if (isDesktop) {
     const cols = `96px repeat(${len}, minmax(124px, 1fr))`;
@@ -167,7 +241,7 @@ export default function Plan() {
               style={{ opacity: start > 0 ? 1 : 0.35 }}
               disabled={start <= 0}
               onClick={() => shift(-1)}
-              aria-label="Předchozí období"
+              aria-label="O den zpět"
             >
               <Icon name="chevron_left" />
             </button>
@@ -180,7 +254,7 @@ export default function Plan() {
               style={{ opacity: start < maxStart ? 1 : 0.35 }}
               disabled={start >= maxStart}
               onClick={() => shift(1)}
-              aria-label="Další období"
+              aria-label="O den dál"
             >
               <Icon name="chevron_right" />
             </button>
@@ -204,6 +278,8 @@ export default function Plan() {
             </button>
           )}
         </div>
+
+        {repeatBar}
 
         <div className="plan-grid">
           <div className="plan-grid__row" style={{ gridTemplateColumns: cols }}>
@@ -244,44 +320,90 @@ export default function Plan() {
                 {s.label}
               </div>
               {vis.map((d) => {
-                const rid = plan[d.key] && plan[d.key][s.key];
-                const r = rid && recipes[rid];
+                const entries = slotMeals(d.key, s.key);
+                const main = entries[0];
+                const rest = entries.slice(1);
                 return (
                   <div key={d.key} className="plan-grid__cell">
-                    {r ? (
-                      <div
-                        className="plan-grid__meal"
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => navigate(`/recipes/${rid}`)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') navigate(`/recipes/${rid}`);
-                        }}
-                      >
-                        <Thumb rid={rid} radius={0} emojiSize={34} className="plan-grid__img" />
-                        <div className="plan-grid__name">{r.name}</div>
-                        <button
-                          type="button"
-                          className="plan-grid__remove"
-                          title="Odebrat"
-                          aria-label={`Odebrat ${s.acc}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeMeal(d.key, s.key);
+                    {main ? (
+                      <div className="plan-grid__stack">
+                        <div
+                          className="plan-grid__meal"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => navigate(`/recipes/${main.rid}`)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') navigate(`/recipes/${main.rid}`);
                           }}
                         >
-                          <Icon name="close" size={17} />
+                          <Thumb rid={main.rid} radius={0} emojiSize={34} className="plan-grid__img" />
+                          <div className="plan-grid__name">
+                            {whoLabel(main) && <span className="plan-grid__who">{whoLabel(main)}: </span>}
+                            {recipes[main.rid].name}
+                          </div>
+                          {main.shared && isPattern(d.key, s.key) && (
+                            <span className="plan-grid__pattern" title="Opakuje se každý týden">
+                              <Icon name="repeat" size={14} />
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            className="plan-grid__remove"
+                            title="Odebrat"
+                            aria-label={`Odebrat ${s.acc}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              askRemove(d.key, s.key, main.shared ? null : main.uids, whoLabel(main));
+                            }}
+                          >
+                            <Icon name="close" size={17} />
+                          </button>
+                        </div>
+                        {rest.map((e) => (
+                          <div key={e.rid} className="plan-grid__extra">
+                            <button
+                              type="button"
+                              className="plan-grid__extra-main"
+                              onClick={() => navigate(`/recipes/${e.rid}`)}
+                            >
+                              <Icon name={e.shared ? 'groups' : 'person'} size={15} />
+                              <span className="ellipsis">
+                                {whoLabel(e) ? `${whoLabel(e)}: ` : ''}
+                                {recipes[e.rid].name}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              className="plan-grid__extra-x"
+                              aria-label={`Odebrat ${s.acc} – ${whoLabel(e)}`}
+                              onClick={() => askRemove(d.key, s.key, e.shared ? null : e.uids, whoLabel(e))}
+                            >
+                              <Icon name="close" size={14} />
+                            </button>
+                          </div>
+                        ))}
+                        {skipLine(d.key, s.key, true)}
+                        <button
+                          type="button"
+                          className="plan-grid__more"
+                          onClick={() => openSheet(s.key, d.key, multi ? memberIds[0] : null)}
+                        >
+                          <Icon name={multi ? 'person_add' : 'swap_horiz'} size={15} />
+                          {multi ? 'Jinak pro člena' : 'Změnit'}
                         </button>
                       </div>
                     ) : (
-                      <button
-                        type="button"
-                        className="plan-grid__add"
-                        aria-label={`Přidat ${s.acc} – ${d.long}`}
-                        onClick={() => openSheet(s.key, d.key)}
-                      >
-                        <Icon name="add" />
-                      </button>
+                      <div className="plan-grid__stack">
+                        <button
+                          type="button"
+                          className="plan-grid__add"
+                          aria-label={`Přidat ${s.acc} – ${d.long}`}
+                          onClick={() => openSheet(s.key, d.key)}
+                        >
+                          <Icon name="add" />
+                        </button>
+                        {skipLine(d.key, s.key, true)}
+                      </div>
                     )}
                   </div>
                 );
@@ -289,7 +411,9 @@ export default function Plan() {
             </div>
           ))}
         </div>
-        {sheetEl}
+        {pickerEl}
+        {removeEl}
+        {repeatEl}
       </div>
     );
   }
@@ -317,7 +441,7 @@ export default function Plan() {
           style={{ opacity: start > 0 ? 1 : 0.35 }}
           disabled={start <= 0}
           onClick={() => shift(-1)}
-          aria-label="Předchozí období"
+          aria-label="O den zpět"
         >
           <Icon name="chevron_left" />
         </button>
@@ -330,7 +454,7 @@ export default function Plan() {
           style={{ opacity: start < maxStart ? 1 : 0.35 }}
           disabled={start >= maxStart}
           onClick={() => shift(1)}
-          aria-label="Další období"
+          aria-label="O den dál"
         >
           <Icon name="chevron_right" />
         </button>
@@ -354,6 +478,8 @@ export default function Plan() {
         })}
       </div>
 
+      {repeatBar}
+
       <div className="row--between" style={{ paddingTop: 4 }}>
         <div style={{ fontSize: 20, fontWeight: 700 }}>{sel.long}</div>
         <span className="status-pill" style={{ background: SS.bg, color: SS.fg }}>
@@ -370,45 +496,73 @@ export default function Plan() {
 
       <div className="stack" style={{ gap: 10 }}>
         {SLOTS.map((s) => {
-          const rid = dayPlan[s.key];
-          const r = rid && recipes[rid];
+          const entries = slotMeals(view.selDay, s.key);
           return (
             <div key={s.key} className="stack" style={{ gap: 7 }}>
               <div className="eyebrow" style={{ paddingLeft: 4 }}>
                 {s.label}
               </div>
-              {r ? (
-                <div
-                  className="plan__meal"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => navigate(`/recipes/${rid}`)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') navigate(`/recipes/${rid}`);
-                  }}
-                >
-                  <Thumb rid={rid} size={56} emojiSize={27} />
-                  <div className="list-row__body" style={{ gap: 3 }}>
-                    <div className="list-row__title">{r.name}</div>
-                    <div className="list-row__sub">{r.preparation}</div>
-                  </div>
-                  <button
-                    type="button"
-                    className="icon-btn icon-btn--plain"
-                    aria-label={`Odebrat ${s.acc}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeMeal(view.selDay, s.key);
+              {entries.map((e) => {
+                const who = whoLabel(e);
+                const r = recipes[e.rid];
+                return (
+                  <div
+                    key={e.rid}
+                    className="plan__meal"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(`/recipes/${e.rid}`)}
+                    onKeyDown={(ev) => {
+                      if (ev.key === 'Enter') navigate(`/recipes/${e.rid}`);
                     }}
                   >
-                    <Icon name="close" />
-                  </button>
-                </div>
-              ) : (
+                    <Thumb rid={e.rid} size={56} emojiSize={27} />
+                    <div className="list-row__body" style={{ gap: 3 }}>
+                      {who && (
+                        <div className="plan__who">
+                          <Icon name={e.shared ? 'groups' : 'person'} size={14} />
+                          {who}
+                        </div>
+                      )}
+                      <div className="list-row__title">{r.name}</div>
+                      <div className="list-row__sub">
+                        {e.shared && isPattern(view.selDay, s.key) && (
+                          <Icon name="repeat" size={13} className="plan__pattern" />
+                        )}
+                        {r.preparation}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="icon-btn icon-btn--plain"
+                      aria-label={`Odebrat ${s.acc}${who ? ` – ${who}` : ''}`}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        askRemove(view.selDay, s.key, e.shared ? null : e.uids, who);
+                      }}
+                    >
+                      <Icon name="close" />
+                    </button>
+                  </div>
+                );
+              })}
+              {skipLine(view.selDay, s.key, false)}
+              {entries.length === 0 ? (
                 <button type="button" className="plan__add" onClick={() => openSheet(s.key)}>
                   <Icon name="add" size={20} />
                   Přidat {s.acc}
                 </button>
+              ) : (
+                multi && (
+                  <button
+                    type="button"
+                    className="plan__member-btn"
+                    onClick={() => openSheet(s.key, view.selDay, memberIds[0])}
+                  >
+                    <Icon name="person_add" size={17} />
+                    Jiné jídlo pro člena
+                  </button>
+                )
               )}
             </div>
           );
@@ -428,7 +582,9 @@ export default function Plan() {
         </div>
       )}
 
-      {sheetEl}
+      {pickerEl}
+      {removeEl}
+      {repeatEl}
     </div>
   );
 }

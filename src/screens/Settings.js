@@ -42,7 +42,7 @@ const isStandalone = () =>
 export default function Settings() {
   const navigate = useNavigate();
   const { logout, nickname } = useAuth();
-  const { hid, uid, members, joinCode, name, settings, owner, isOwner, updateSettings, updateHouseholdName, replaceRecipesWithSeed, rohlik } =
+  const { hid, uid, members, joinCode, name, settings, owner, isOwner, updateSettings, updateHouseholdName, replaceRecipesWithSeed, addMissingSeedRecipes, rohlik } =
     useHousehold();
   const [ownerBusy, setOwnerBusy] = useState(null); // 'code' | member uid
   const [nameDraft, setNameDraft] = useState(capitalizeFirst(name));
@@ -112,6 +112,19 @@ export default function Settings() {
       setToast(e.message || 'Člena se nepodařilo odebrat');
     } finally {
       setOwnerBusy(null);
+    }
+  };
+
+  const [seedBusy, setSeedBusy] = useState(false);
+  const addMissingRecipes = async () => {
+    setSeedBusy(true);
+    try {
+      const n = await addMissingSeedRecipes();
+      setToast(n ? `Doplněno receptů: ${n}` : 'Všechny výchozí recepty už máte');
+    } catch (e) {
+      setToast('Recepty se nepodařilo doplnit');
+    } finally {
+      setSeedBusy(false);
     }
   };
 
@@ -262,22 +275,30 @@ export default function Settings() {
             )}
           </div>
 
-          {isOwner && (
-            <div className="stack">
-              <h2 className="h-section">Recepty</h2>
-              <div className="list-card">
+          <div className="stack">
+            <h2 className="h-section">Recepty</h2>
+            <div className="list-card">
+              <div className="list-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12 }}>
+                <div className="list-row__sub">
+                  Přidat výchozí recepty, které v domácnosti ještě chybí (podle názvu). Stávající recepty zůstanou beze změny.
+                </div>
+                <button type="button" className="btn btn--soft btn--sm" onClick={addMissingRecipes} disabled={seedBusy || !!ownerBusy}>
+                  {seedBusy ? <Spinner small /> : 'Doplnit chybějící výchozí recepty'}
+                </button>
+              </div>
+              {isOwner && (
                 <div className="list-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12 }}>
                   <div className="list-row__sub">
                     Nahradit všechny recepty v domácnosti novou výchozí sadou ({SEED_RECIPE_COUNT} receptů). Smažou se i
                     jejich fotky a z plánu zmizí odstraněná jídla.
                   </div>
-                  <button type="button" className="btn btn--soft btn--sm" onClick={replaceRecipes} disabled={!!ownerBusy}>
+                  <button type="button" className="btn btn--soft btn--sm" onClick={replaceRecipes} disabled={!!ownerBusy || seedBusy}>
                     {ownerBusy === 'recipes' ? <Spinner small /> : 'Nahradit recepty novou sadou'}
                   </button>
                 </div>
-              </div>
+              )}
             </div>
-          )}
+          </div>
 
           <div className="stack">
             <h2 className="h-section">Účet Rohlík</h2>

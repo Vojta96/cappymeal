@@ -6,16 +6,22 @@ const ing = (g) => {
   const [n, a] = g.split('|');
   return { name: n, amount: a || '' };
 };
-const r = (name, emoji, type, preparation, ingredients, instructions) => ({
-  id: nextId++,
-  name,
-  image: null,
-  emoji,
-  ingredients: ingredients.map(ing),
-  instructions,
-  type,
-  preparation,
-});
+// type: string, or an array of slots (first = primary `type`, all go to `types` when more than one)
+const r = (name, emoji, type, preparation, ingredients, instructions) => {
+  const list = Array.isArray(type) ? type : [type];
+  const rec = {
+    id: nextId++,
+    name,
+    image: null,
+    emoji,
+    ingredients: ingredients.map(ing),
+    instructions,
+    type: list[0],
+    preparation,
+  };
+  if (list.length > 1) rec.types = Object.fromEntries(list.map((k) => [k, true]));
+  return rec;
+};
 
 const MealsList = [
   // ===== SNÍDANĚ =====
@@ -375,11 +381,23 @@ const MealsList = [
   r('Flaxseed chleba', '🍞', 'snack', 'Pečení', [
     'Lněná semínka mletá|150 g', 'Vejce|2 ks', 'Kypřící prášek|1 lžička', 'Sůl|1 špetka', 'Voda|100 ml',
   ], 'Mletá lněná semínka smícháme s vejci, kypřícím práškem, solí a vodou a upečeme. Podrobný postup: https://www.facebook.com/reel/1412679723764778'),
+  r('Jablko', '🍎', ['snack', 'afternoon_snack', 'breakfast'], 'Bez vaření', [['Jablka', '2 ks']], 'Jablka omyjeme, podle chuti nakrájíme na měsíčky a podáváme jako rychlou svačinu.'),
+  r('Banán', '🍌', ['snack', 'afternoon_snack', 'breakfast'], 'Bez vaření', [['Banány', '2 ks']], 'Banány oloupeme a podáváme celé nebo nakrájené na kolečka.'),
+  r('Hruška', '🍐', ['snack', 'afternoon_snack', 'breakfast'], 'Bez vaření', [['Hrušky', '2 ks']], 'Hrušky omyjeme, vykrájíme jádřince a podáváme na měsíčky.'),
+  r('Mandarinky', '🍊', ['snack', 'afternoon_snack'], 'Bez vaření', [['Mandarinky', '4 ks']], 'Mandarinky oloupeme a rozdělíme na dílky.'),
+  r('Pomeranč', '🍊', ['snack', 'afternoon_snack'], 'Bez vaření', [['Pomeranče', '2 ks']], 'Pomeranče oloupeme a nakrájíme na měsíčky nebo dílky.'),
+  r('Kiwi', '🥝', ['snack', 'afternoon_snack', 'breakfast'], 'Bez vaření', [['Kiwi', '3 ks']], 'Kiwi oloupeme a nakrájíme na plátky, nebo podélně rozkrojíme a vyjídáme lžičkou.'),
+  r('Hroznové víno', '🍇', ['snack', 'afternoon_snack'], 'Bez vaření', [['Hroznové víno', '200 g']], 'Hrozny omyjeme, odtrhneme z hroznu a podáváme v misce.'),
+  r('Jahody', '🍓', ['snack', 'afternoon_snack', 'breakfast'], 'Bez vaření', [['Jahody', '250 g']], 'Jahody omyjeme, odstraníme stopky a podáváme celé nebo půlené.'),
+  r('Borůvky', '🫐', ['snack', 'afternoon_snack', 'breakfast'], 'Bez vaření', [['Borůvky', '150 g']], 'Borůvky propláchneme a podáváme samotné nebo s jogurtem.'),
+  r('Ovocný talíř (mix)', '🍓', ['snack', 'afternoon_snack', 'breakfast'], 'Bez vaření', [['Jablka', '1 ks'], ['Banány', '1 ks'], ['Mandarinky', '2 ks'], ['Hroznové víno', '100 g']], 'Ovoce omyjeme, oloupeme a nakrájíme. Naaranžujeme na talíř a podáváme společně.'),
+  r('Jablko s arašídovým máslem', '🥜', ['snack', 'afternoon_snack'], 'Bez vaření', [['Jablka', '2 ks'], ['Arašídové máslo', '40 g']], 'Jablka nakrájíme na měsíčky a podáváme s arašídovým máslem na namáčení.'),
+  r('Bílý jogurt s ovocem', '🥛', ['snack', 'afternoon_snack', 'breakfast'], 'Bez vaření', [['Bílý jogurt', '300 g'], ['Jahody', '100 g'], ['Banány', '1 ks']], 'Jogurt rozdělíme do misek, přidáme nakrájené ovoce a případně pokapeme medem.'),
   r('Kyselé okurky', '🥒', 'snack', 'Bez vaření', ['Kyselé okurky|1 sklenice'], 'Okurky vyndáme ze sklenice a podáváme jako lehkou svačinu.'),
   r('Kvalitní šunka', '🥓', 'snack', 'Bez vaření', ['Šunka kvalitní|100 g'], 'Plátky kvalitní šunky podáváme samotné nebo se zeleninou.'),
-  r('Mandle blanšírované', '🌰', 'snack', 'Bez vaření', ['Mandle blanšírované|50 g'], 'Hrst blanšírovaných mandlí podáváme jako rychlou svačinu.'),
-  r('Oříšky nesolené', '🥜', 'snack', 'Bez vaření', ['Oříšky nesolené|50 g'], 'Hrst nesolených oříšků podáváme jako rychlou svačinu.'),
-  r('Zelenina na chroupání', '🥕', 'snack', 'Bez vaření', ['Mrkev|1 ks', 'Okurka|1 ks', 'Paprika|1 ks'], 'Zeleninu omyjeme, nakrájíme na tyčinky a podáváme samotnou nebo s dipem.'),
+  r('Mandle blanšírované', '🌰', ['snack', 'afternoon_snack'], 'Bez vaření', ['Mandle blanšírované|50 g'], 'Hrst blanšírovaných mandlí podáváme jako rychlou svačinu.'),
+  r('Oříšky nesolené', '🥜', ['snack', 'afternoon_snack'], 'Bez vaření', ['Oříšky nesolené|50 g'], 'Hrst nesolených oříšků podáváme jako rychlou svačinu.'),
+  r('Zelenina na chroupání', '🥕', ['snack', 'afternoon_snack'], 'Bez vaření', ['Mrkev|1 ks', 'Okurka|1 ks', 'Paprika|1 ks'], 'Zeleninu omyjeme, nakrájíme na tyčinky a podáváme samotnou nebo s dipem.'),
   r('Polévka do hrnečku (houbová)', '🍵', 'snack', 'Bez vaření', ['Polévka do hrnečku houbová|1 sáček'], 'Instantní polévku zalijeme horkou vodou podle návodu na obalu a promícháme.'),
   r('Zapečená cizrna ve fritéze', '🫘', 'snack', 'Fritéza', [
     'Cizrna sterilovaná|1 plechovka', 'Olivový olej|1 lžíce', 'Sůl, paprika, koření|dle chuti',
@@ -390,7 +408,7 @@ const MealsList = [
   r('Tortilla s čímkoliv', '🌯', 'snack', 'Bez vaření', [
     'Tortilla pšeničná|2 ks', 'Náplň dle chuti (šunka, sýr, zelenina)|dle chuti',
   ], 'Tortillu naplníme čímkoliv, co máme po ruce, a zabalíme.'),
-  r('Slunečnicová semínka', '🌻', 'snack', 'Bez vaření', ['Slunečnicová semínka|50 g'], 'Hrst slunečnicových semínek podáváme jako rychlou svačinu.'),
+  r('Slunečnicová semínka', '🌻', ['snack', 'afternoon_snack'], 'Bez vaření', ['Slunečnicová semínka|50 g'], 'Hrst slunečnicových semínek podáváme jako rychlou svačinu.'),
   r('Nejlepší potraviny', '⭐', 'snack', 'Bez vaření', [
     'Cuketa|dle potřeby', 'Meloun|dle potřeby', 'Vaječné bílky|dle potřeby', 'Žampiony|dle potřeby', 'Jahody|dle potřeby', 'Okurka|dle potřeby', 'Konjakové těstoviny|dle potřeby', 'Kysané zelí|dle potřeby', 'Dýně|dle potřeby', 'Jogurt|dle potřeby', 'Skyr|dle potřeby', 'Listová zelenina (špenát, polníček, rukola)|dle potřeby', 'Brambory|dle potřeby',
   ], 'Přehled nejlepších potravin na hubnutí: cuketa, meloun, bílky, žampiony, jahody, okurka, konjakové těstoviny, kysané zelí, dýně, jogurt, skyr, listová zelenina (špenát, polníček, rukola) a vařené brambory. Dají se jíst často a hodí se jako základ jídel i svačin.'),

@@ -151,6 +151,10 @@ test('recipes validation', async () => {
   await assertFails(set(ref(db('eve'), `households/${HID}/recipes/r3`), recipe));
   await assertFails(set(ref(bob, `households/${HID}/recipes/r3`), { ...recipe, type: 'brunch' }));
   await assertFails(set(ref(bob, `households/${HID}/recipes/r3`), { ...recipe, name: 'x'.repeat(81) }));
+  await assertSucceeds(set(ref(bob, `households/${HID}/recipes/r3`), { ...recipe, types: { breakfast: true, snack: true } }));
+  await assertFails(set(ref(bob, `households/${HID}/recipes/r3`), { ...recipe, types: { brunch: true } }));
+  await assertFails(set(ref(bob, `households/${HID}/recipes/r3`), { ...recipe, types: { snack: false } }));
+  await assertFails(set(ref(bob, `households/${HID}/recipes/r3`), { ...recipe, types: { snack: 'ano' } }));
   await assertFails(set(ref(bob, `households/${HID}/recipes/r3`), { ...recipe, instructions: 'x'.repeat(5001) }));
   await assertFails(set(ref(bob, `households/${HID}/recipes/r3`), { ...recipe, evil: 1 }));
   await assertFails(set(ref(bob, `households/${HID}/recipes/r3`), {
@@ -245,6 +249,54 @@ test('plan validation', async () => {
   await assertFails(set(ref(bob, `households/${HID}/plan/tomorrow/lunch`), 'r1'));
   await assertFails(set(ref(bob, `households/${HID}/plan/${today}/lunch`), 'x'.repeat(41)));
   await assertFails(set(ref(bob, `households/${HID}/plan/${today}/lunch`), 5));
+  await assertSucceeds(set(ref(bob, `households/${HID}/plan/${today}/lunch`), '-'));
+});
+
+test('memberMeals: members write, validated uid / slot / date / value', async () => {
+  const bob = db('bob');
+  const p = (d, s, u) => `households/${HID}/memberMeals/${d}/${s}/${u}`;
+  await assertSucceeds(set(ref(bob, p(today, 'lunch', 'alice')), 'r1'));
+  await assertSucceeds(set(ref(bob, p(today, 'lunch', 'bob')), '-'));
+  await assertSucceeds(set(ref(bob, p(today, 'dinner', 'bob')), '='));
+  await assertFails(set(ref(bob, p(today, 'lunch', 'eve')), 'r1'));
+  await assertFails(set(ref(bob, p(today, 'brunch', 'bob')), 'r1'));
+  await assertFails(set(ref(bob, p('tomorrow', 'lunch', 'bob')), 'r1'));
+  await assertFails(set(ref(bob, p(today, 'lunch', 'bob')), ''));
+  await assertFails(set(ref(bob, p(today, 'lunch', 'bob')), 'x'.repeat(41)));
+  await assertFails(set(ref(bob, p(today, 'lunch', 'bob')), 5));
+  await assertFails(set(ref(db('eve'), p(today, 'lunch', 'bob')), 'r1'));
+  await assertFails(set(ref(db('zed'), p(today, 'lunch', 'bob')), 'r1'));
+  await assertSucceeds(remove(ref(bob, p(today, 'lunch', 'alice'))));
+  // removed member: leftover entry can still be deleted
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await set(ref(ctx.database(), p(today, 'lunch', 'gone')), 'r1');
+  });
+  await assertSucceeds(remove(ref(bob, p(today, 'lunch', 'gone'))));
+});
+
+test('weekTemplate: members write whole / leaves, validated', async () => {
+  const bob = db('bob');
+  const w = `households/${HID}/weekTemplate`;
+  const tpl = {
+    from: today, by: 'bob', at: 1,
+    days: { d1: { plan: { lunch: 'r1' }, members: { lunch: { alice: '-' } } }, d0: { plan: { dinner: '-' } } },
+  };
+  await assertSucceeds(set(ref(bob, w), tpl));
+  await assertSucceeds(set(ref(bob, `${w}/days/d2/plan/lunch`), 'r1'));
+  await assertSucceeds(set(ref(bob, `${w}/days/d1/members/lunch/bob`), '='));
+  await assertSucceeds(remove(ref(bob, `${w}/days/d1/plan/lunch`)));
+  await assertSucceeds(set(ref(db('alice'), `${w}/days/d3/plan/dinner`), 'r1'));
+  await assertFails(set(ref(bob, `${w}/days/d7/plan/lunch`), 'r1'));
+  await assertFails(set(ref(bob, `${w}/days/d1/plan/brunch`), 'r1'));
+  await assertFails(set(ref(bob, `${w}/days/d1/plan/lunch`), 'x'.repeat(41)));
+  await assertFails(set(ref(bob, `${w}/days/d1/members/lunch/bob`), ''));
+  await assertFails(set(ref(bob, `${w}/days/d1/foo`), 'x'));
+  await assertFails(set(ref(bob, `${w}/extra`), 'x'));
+  await assertFails(set(ref(db('eve'), `${w}/days/d4/plan/lunch`), 'r1'));
+  await assertSucceeds(remove(ref(bob, w)));
+  await assertFails(set(ref(bob, w), { ...tpl, by: 'alice' }));
+  await assertFails(set(ref(bob, w), { ...tpl, from: 'soon' }));
+  await assertFails(set(ref(db('eve'), w), tpl));
 });
 
 test('orders validation', async () => {

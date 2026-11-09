@@ -202,6 +202,8 @@ export default function Cart() {
     horizon,
     todayKey,
     plan,
+    memberPlan,
+    memberIds,
     recipes,
     pantry,
     regulars,
@@ -265,7 +267,10 @@ export default function Cart() {
     return [...set].sort();
   }, [days, horizon, statusOf]);
 
-  const all = useMemo(() => aggregateIngredients(days, plan, recipes), [days, plan, recipes]);
+  const all = useMemo(
+    () => aggregateIngredients(days, plan, recipes, memberPlan, memberIds),
+    [days, plan, recipes, memberPlan, memberIds]
+  );
   const allRegulars = useMemo(() => regularItems(regulars, regSel, { onlySelected: false }), [regulars, regSel]);
   const chosenRegulars = useMemo(() => allRegulars.filter((r) => isRegularSelected(r.id, r, regSel)), [
     allRegulars,

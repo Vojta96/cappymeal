@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Icon } from './ui';
 
-export default function BottomSheet({ open, onClose, title, sub, head, children }) {
+export default function BottomSheet({ open, onClose, title, sub, head, children, wide = false }) {
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e) => {
@@ -20,7 +20,7 @@ export default function BottomSheet({ open, onClose, title, sub, head, children 
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div
-        className="sheet"
+        className={`sheet${wide ? ' sheet--wide' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}

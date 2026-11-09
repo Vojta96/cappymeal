@@ -3,7 +3,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useHousehold } from '../context/HouseholdContext';
 import { useRecipeImageFull } from '../components/Thumb';
 import { Icon, Spinner } from '../components/ui';
-import { SLOTS } from '../lib/meals';
+import { SLOTS, recipeTypes } from '../lib/meals';
 import { resizeImage } from '../lib/image';
 import './recipes.css';
 
@@ -20,6 +20,7 @@ const emptyDraft = () => ({
   name: '',
   emoji: '🍽️',
   type: 'lunch',
+  types: ['lunch'],
   preparation: '',
   ingredients: [{ name: '', amount: '' }],
   instructions: '',
@@ -40,6 +41,7 @@ export default function RecipeEdit() {
           name: existing.name || '',
           emoji: existing.emoji || '🍽️',
           type: existing.type || 'lunch',
+          types: recipeTypes(existing).length ? recipeTypes(existing) : [existing.type || 'lunch'],
           preparation: existing.preparation || '',
           ingredients: (existing.ingredients || []).length
             ? existing.ingredients.map((g) => ({ name: g.name || '', amount: g.amount || '' }))
@@ -57,6 +59,16 @@ export default function RecipeEdit() {
   if (!isNew && !existing && !saving) return <Navigate to="/recipes" replace />;
 
   const setD = (patch) => setDraft((d) => ({ ...d, ...patch }));
+  // Multi-select; at least one stays on. Primary type stays if still selected, else the first in SLOTS order.
+  const toggleType = (key) =>
+    setDraft((d) => {
+      const on = d.types.includes(key);
+      if (on && d.types.length === 1) return d;
+      const set = new Set(d.types);
+      if (on) set.delete(key); else set.add(key);
+      const types = SLOTS.map((x) => x.key).filter((k) => set.has(k));
+      return { ...d, types, type: set.has(d.type) ? d.type : types[0] };
+    });
   const setIng = (i, patch) =>
     setDraft((d) => {
       const a = [...d.ingredients];
@@ -222,8 +234,9 @@ export default function RecipeEdit() {
                   <button
                     type="button"
                     key={s.key}
-                    className={`chip${draft.type === s.key ? ' chip--on' : ''}`}
-                    onClick={() => setD({ type: s.key })}
+                    className={`chip${draft.types.includes(s.key) ? ' chip--on' : ''}`}
+                    aria-pressed={draft.types.includes(s.key)}
+                    onClick={() => toggleType(s.key)}
                   >
                     {s.label}
                   </button>

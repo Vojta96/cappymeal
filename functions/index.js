@@ -843,11 +843,17 @@ async function remindHousehold(hid, hour, today) {
   if (remindHour !== hour) return;
   const from = rem.addDays(today, 1);
   const to = rem.addDays(today, 3 + rem.leadShift(settings));
-  const [planSnap, ordersSnap] = await Promise.all([
+  const [planSnap, ordersSnap, memberMealsSnap, templateSnap, membersSnap] = await Promise.all([
     base.child('plan').orderByKey().startAt(from).endAt(to).get(),
     base.child('orders').orderByKey().startAt(from).endAt(to).get(),
+    base.child('memberMeals').orderByKey().startAt(from).endAt(to).get(),
+    base.child('weekTemplate').get(),
+    base.child('members').get(),
   ]);
-  const msg = rem.buildMessage(rem.computeReminderDates(today, planSnap.val(), ordersSnap.val(), settings));
+  const memberIds = Object.keys(membersSnap.val() || {});
+  const msg = rem.buildMessage(rem.computeReminderDates(today, planSnap.val(), ordersSnap.val(), settings, {
+    memberMeals: memberMealsSnap.val() || {}, weekTemplate: templateSnap.val(), memberIds,
+  }));
   if (!msg) return;
   const pushTokens = (await base.child('pushTokens').get()).val() || {};
   const tokens = [];

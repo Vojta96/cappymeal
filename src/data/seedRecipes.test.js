@@ -6,14 +6,14 @@ jest.mock('../services/functions', () => ({ callFunction: () => Promise.resolve(
 describe('seed recipes', () => {
   test('expected counts per type, unique ids and names', () => {
     const count = (t) => seedRecipes.filter((r) => r.type === t).length;
-    expect(seedRecipes).toHaveLength(165);
+    expect(seedRecipes).toHaveLength(177);
     expect(count('breakfast')).toBe(30);
-    expect(count('snack')).toBe(27);
+    expect(count('snack')).toBe(39);
     expect(count('lunch')).toBe(70);
     expect(count('afternoon_snack')).toBe(16);
     expect(count('dinner')).toBe(22);
-    expect(new Set(seedRecipes.map((r) => r.id)).size).toBe(165);
-    expect(new Set(seedRecipes.map((r) => r.name)).size).toBe(165);
+    expect(new Set(seedRecipes.map((r) => r.id)).size).toBe(177);
+    expect(new Set(seedRecipes.map((r) => r.name)).size).toBe(177);
   });
 
   test('no placeholders, every recipe has ingredients, instructions and a preparation', () => {
@@ -30,6 +30,16 @@ describe('seed recipes', () => {
       expect(r.preparation).not.toBe('');
       expect(r.name).toBe(r.name.charAt(0).toUpperCase() + r.name.slice(1));
     });
+  });
+
+  test('multi-type recipes carry types incl. the primary type', () => {
+    const multi = seedRecipes.filter((r) => r.types);
+    expect(multi.length).toBeGreaterThanOrEqual(12);
+    multi.forEach((r) => {
+      expect(Object.keys(r.types).length).toBeGreaterThan(1);
+      expect(r.types[r.type]).toBe(true);
+    });
+    expect(seedRecipeRecords('u1', 1).filter((r) => r.types)).toHaveLength(multi.length);
   });
 
   test('records fit the database rules limits', () => {

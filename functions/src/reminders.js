@@ -35,7 +35,31 @@ function formatDay(ymd) {
 }
 
 function hasPlannedMeals(dayPlan) {
-  return !!dayPlan && Object.values(dayPlan).some(Boolean);
+  return !!dayPlan && Object.values(dayPlan).some((v) => v && v !== '-');
+}
+
+const SLOTS = ['breakfast', 'snack', 'lunch', 'afternoon_snack', 'dinner'];
+
+/**
+ * Does the date have any meal in the EFFECTIVE plan (shared plan + weekly template + per-member overrides)?
+ * Shared value '-' = explicitly empty; member '-' = not eating, '=' = eats the shared meal.
+ */
+function effectiveHasMeals(date, plan, memberMeals, weekTemplate, memberIds) {
+  const tpl = weekTemplate && weekTemplate.from && date >= weekTemplate.from ? weekTemplate : null;
+  const t = tpl && tpl.days && tpl.days['d' + weekday(date)];
+  const dayPlan = (plan && plan[date]) || {};
+  const dayMem = (memberMeals && memberMeals[date]) || {};
+  for (const slot of SLOTS) {
+    let v = dayPlan[slot];
+    if (v === undefined || v === null) v = t && t.plan && t.plan[slot];
+    if (v && v !== '-') return true;
+    for (const uid of memberIds || []) {
+      let m = dayMem[slot] && dayMem[slot][uid];
+      if (m === undefined || m === null) m = t && t.members && t.members[slot] && t.members[slot][uid];
+      if (m && m !== '-' && m !== '=') return true;
+    }
+  }
+  return false;
 }
 
 /** 1 when the household wants deliveries the day before cooking (settings/delivery/lead), else 0. */
@@ -50,7 +74,9 @@ function leadShift(settings) {
  * With delivery lead 'dayBefore' the deadline is one day earlier: D-4 (remind3d) and D-3, D-2, D-1 (daily –
  * D-1 is already late but delivery that day is still possible).
  */
-function computeReminderDates(today, plan, orders, settings = {}) {
+function computeReminderDates(today, plan, orders, settings = {}, extra = {}) {
+  const { memberMeals, weekTemplate, memberIds } = extra || {};
+  const useEffective = !!(memberMeals || weekTemplate);
   const s = { remind3d: true, remindDaily: true, ...settings };
   const shift = leadShift(s);
   const offsets = [];
@@ -59,7 +85,10 @@ function computeReminderDates(today, plan, orders, settings = {}) {
   const out = [];
   for (const off of offsets) {
     const d = addDays(today, off);
-    if (!hasPlannedMeals((plan || {})[d])) continue;
+    const has = useEffective
+      ? effectiveHasMeals(d, plan, memberMeals, weekTemplate, memberIds)
+      : hasPlannedMeals((plan || {})[d]);
+    if (!has) continue;
     if (orders && orders[d] && orders[d].status === 'ordered') continue;
     out.push(d);
   }
@@ -78,5 +107,5 @@ function buildMessage(dates) {
 
 module.exports = {
   TZ, pragueDateString, pragueHour, addDays, weekday, formatDay,
-  computeReminderDates, buildMessage, leadShift,
+  computeReminderDates, buildMessage, leadShift, effectiveHasMeals,
 };

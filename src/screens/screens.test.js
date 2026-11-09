@@ -7,6 +7,7 @@ import { HouseholdContext } from '../context/HouseholdContext';
 import { BannerProvider } from '../components/PushBanner';
 import { addDays, dateKey, horizonKeys } from '../lib/dates';
 import { buildAlert, dayStatus } from '../lib/meals';
+import { slotEntries } from '../lib/planModel';
 import Home from './Home';
 import Plan from './Plan';
 import Recipes from './Recipes';
@@ -175,6 +176,22 @@ const household = {
   horizon,
   recipes,
   plan,
+  // Jana eats something else for lunch tomorrow and skips breakfast.
+  memberPlan: { [addDays(today, 1)]: { lunch: { u2: 'r2' }, breakfast: { u2: '-' } } },
+  fromTemplate: { [today]: { lunch: true } },
+  weekTemplate: { from: today, days: {} },
+  memberIds: ['u1', 'u2'],
+  memberName: (u) => ({ u1: 'Vojta', u2: 'Jana' }[u] || 'Člen'),
+  slotMeals: (day, slot) =>
+    slotEntries(
+      plan[day] && plan[day][slot],
+      { [addDays(today, 1)]: { lunch: { u2: 'r2' }, breakfast: { u2: '-' } } }[day]?.[slot],
+      ['u1', 'u2'],
+      recipes
+    ),
+  startRepeat: noop,
+  stopRepeat: noop,
+  addMissingSeedRecipes: noop,
   orders,
   pantry: {},
   members: { u1: { nickname: 'vojta', joinedAt: 1 }, u2: { nickname: 'jana', joinedAt: 2 } },
@@ -241,6 +258,23 @@ test('Plán', () => {
   fireEvent.click(screen.getByText('Přidat snídani'));
   expect(screen.getByText('Vybrat snídani')).toBeInTheDocument();
   expect(screen.getByText('Ovesná kaše')).toBeInTheDocument();
+});
+
+test('Plán: jídla pro členy, opakování, šipky po dni, výběr v mřížce', () => {
+  renderAt('/plan', <Plan />);
+  expect(screen.getByText(/Týden se opakuje/)).toBeInTheDocument();
+  const period = () => screen.getByText(/–/, { selector: 'div' }).textContent;
+  const before = period();
+  fireEvent.click(screen.getByLabelText('O den dál'));
+  expect(period()).not.toBe(before);
+  // Tomorrow: Jana has her own lunch and skips breakfast.
+  fireEvent.click(screen.getAllByText(String(new Date(Date.now() + 86400000).getDate()))[0]);
+  expect(screen.getByText('Nejí: Jana')).toBeInTheDocument();
+  expect(screen.getAllByText('Jana').length).toBeGreaterThan(0);
+  fireEvent.click(screen.getAllByText('Jiné jídlo pro člena')[0]);
+  expect(screen.getByText('Pro koho')).toBeInTheDocument();
+  expect(screen.getByText('Jen tento den')).toBeInTheDocument();
+  expect(screen.getByText('Nejí')).toBeInTheDocument();
 });
 
 test('Recepty + filtr', () => {
@@ -556,7 +590,10 @@ describe('desktop layout (>= 1024px)', () => {
   test('plan shows the week grid', () => {
     renderAt('/plan', <Plan />);
     expect(document.querySelector('.plan-grid')).not.toBeNull();
-    expect(screen.getAllByText('Těstoviny Bolognese')).toHaveLength(2);
+    expect(screen.getAllByText(/Těstoviny Bolognese/).length).toBeGreaterThan(0);
+    // Tomorrow's lunch: everyone else has the shared meal, Jana her own one.
+    expect(screen.getAllByText('Ostatní:').length).toBeGreaterThan(0);
+    expect(screen.getByText('Jana: Ovesná kaše')).toBeInTheDocument();
   });
 
   test('mobile shell keeps the tab bar', () => {

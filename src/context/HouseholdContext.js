@@ -21,7 +21,8 @@ import {
 import { db } from '../firebase';
 import { useAuth } from './AuthContext';
 import { dateKey, dayInfo, horizonKeys } from '../lib/dates';
-import { SLOT_BY_KEY, dayStatus, buildAlert } from '../lib/meals';
+import { SLOTS, SLOT_BY_KEY, dayStatus, buildAlert } from '../lib/meals';
+import { EMPTY, SAME, resolveDay, resolvePlan, slotEntries, templateDay, weekdayKey } from '../lib/planModel';
 import { DEFAULT_SETTINGS, ensureHouseholdMeta, seedRecipeRecords } from '../services/household';
 import { capitalizeFirst } from '../lib/text';
 import { prefUpdates } from '../lib/shop';
@@ -33,7 +34,7 @@ export const HouseholdContext = createContext(null);
 
 const SUBTREES = [
   'recipes', 'plan', 'orders', 'pantry', 'settings', 'members', 'joinCode', 'name', 'owner', 'rohlik', 'regulars',
-  'productPrefs',
+  'productPrefs', 'memberMeals', 'weekTemplate',
 ];
 
 // Recipe photos: householdPhotos/{hid}/{rid}; households/{hid}/photos/{rid} is the read-only legacy location.
@@ -100,7 +101,12 @@ export function HouseholdProvider({ hid, children }) {
   }, [hid]);
 
   const recipes = useMemo(() => data.recipes || {}, [data.recipes]);
-  const plan = useMemo(() => data.plan || {}, [data.plan]);
+  const rawPlan = useMemo(() => data.plan || {}, [data.plan]);
+  const rawMemberMeals = useMemo(() => data.memberMeals || {}, [data.memberMeals]);
+  const weekTemplate = useMemo(
+    () => (data.weekTemplate && data.weekTemplate.from ? data.weekTemplate : null),
+    [data.weekTemplate]
+  );
   const orders = useMemo(() => data.orders || {}, [data.orders]);
   const pantry = useMemo(() => data.pantry || {}, [data.pantry]);
   const members = useMemo(() => data.members || {}, [data.members]);
@@ -123,9 +129,32 @@ export function HouseholdProvider({ hid, children }) {
   }, [hid, uid, loaded.owner, loaded.members, data.owner, data.members]);
 
   const horizon = useMemo(() => horizonKeys(todayKey), [todayKey]);
+  // Current members, oldest first (overrides of former members are ignored everywhere).
+  const memberIds = useMemo(
+    () =>
+      Object.entries(members)
+        .sort((a, b) => ((a[1] && a[1].joinedAt) || 0) - ((b[1] && b[1].joinedAt) || 0))
+        .map(([k]) => k),
+    [members]
+  );
+  // Effective plan: concrete days over the repeating week (src/lib/planModel.js).
+  const { plan, memberPlan, fromTemplate } = useMemo(
+    () => resolvePlan(horizon, rawPlan, rawMemberMeals, weekTemplate),
+    [horizon, rawPlan, rawMemberMeals, weekTemplate]
+  );
   const statusOf = useCallback(
-    (key) => dayStatus(plan[key], orders[key], recipes),
-    [plan, orders, recipes]
+    (key) => dayStatus(plan[key], orders[key], recipes, memberPlan[key], memberIds),
+    [plan, memberPlan, memberIds, orders, recipes]
+  );
+  /** [{ rid, uids, shared }] – who eats what in a slot (see slotEntries). */
+  const slotMeals = useCallback(
+    (day, slot) =>
+      slotEntries(plan[day] && plan[day][slot], memberPlan[day] && memberPlan[day][slot], memberIds, recipes),
+    [plan, memberPlan, memberIds, recipes]
+  );
+  const memberName = useCallback(
+    (u) => capitalizeFirst((members[u] && members[u].nickname) || '') || 'Člen',
+    [members]
   );
   const shift = leadShift(data.settings);
   const alert = useMemo(() => buildAlert(todayKey, horizon, statusOf, shift), [todayKey, horizon, statusOf, shift]);
@@ -274,28 +303,129 @@ export function HouseholdProvider({ hid, children }) {
     [orders, base]
   );
 
-  const setMeal = useCallback(
-    async (day, slot, rid) => {
-      await set(ref(db, `${base}/plan/${day}/${slot}`), rid);
-      await markPlanChanged(day);
+  /**
+   * Write one meal value.
+   * opts.uid: member (null = the shared meal for everyone); opts.scope: 'day' (default) | 'week' (repeating pattern).
+   * value: recipe id | null (remove) | '-' (member doesn't eat) | '=' (member eats the shared meal).
+   */
+  const writeMeal = useCallback(
+    async (day, slot, value, opts = {}) => {
+      const who = opts.uid || null;
+      const week = opts.scope === 'week' && !!weekTemplate && day >= weekTemplate.from;
+      const t = templateDay(weekTemplate, day);
+      const wd = weekdayKey(day);
+      const updates = {};
+      if (!who) {
+        const v = value && value !== EMPTY ? value : null;
+        if (week) {
+          updates[`weekTemplate/days/${wd}/plan/${slot}`] = v;
+          updates[`plan/${day}/${slot}`] = null;
+        } else {
+          // Removing a pattern meal on one day needs an explicit "empty" marker.
+          const fromPattern = t && t.plan && t.plan[slot];
+          updates[`plan/${day}/${slot}`] = v || (fromPattern ? EMPTY : null);
+        }
+      } else if (week) {
+        updates[`weekTemplate/days/${wd}/members/${slot}/${who}`] = value && value !== SAME ? value : null;
+        updates[`memberMeals/${day}/${slot}/${who}`] = null;
+      } else {
+        const fromPattern = t && t.members && t.members[slot] && t.members[slot][who];
+        let v = value || SAME;
+        if (v === SAME && !fromPattern) v = null;
+        updates[`memberMeals/${day}/${slot}/${who}`] = v;
+      }
+      if (week) {
+        updates['weekTemplate/by'] = uid;
+        updates['weekTemplate/at'] = Date.now();
+      }
+      await update(ref(db, base), updates);
+      const touched = week ? horizon.filter((k) => k >= day && weekdayKey(k) === wd) : [day];
+      await Promise.all(touched.map((k) => markPlanChanged(k)));
       const d = dayInfo(day);
-      const r = recipes[rid];
-      logActivity(
-        'plan',
-        `${nickname} přidal(a) ${SLOT_BY_KEY[slot].acc} na ${d.acc} ${d.num}. ${d.m}.${r ? ` – ${r.name}` : ''}`
-      );
+      const when = week ? `na ${d.dl === 'neděle' || d.dl === 'středa' || d.dl === 'sobota' ? 'každou' : 'každé'} ${d.acc}` : `na ${d.acc} ${d.num}. ${d.m}.`;
+      const forWho = who ? ` (${capitalizeFirst((members[who] && members[who].nickname) || '')})` : '';
+      const r = value && recipes[value];
+      const verb = !value || value === EMPTY ? 'zrušil(a)' : value === SAME ? 'sjednotil(a)' : 'přidal(a)';
+      logActivity('plan', `${nickname} ${verb} ${SLOT_BY_KEY[slot].acc} ${when}${forWho}${r ? ` – ${r.name}` : ''}`);
     },
-    [base, recipes, nickname, logActivity, markPlanChanged]
+    [base, uid, horizon, weekTemplate, members, recipes, nickname, logActivity, markPlanChanged]
   );
 
-  const removeMeal = useCallback(
-    async (day, slot) => {
-      await remove(ref(db, `${base}/plan/${day}/${slot}`));
-      await markPlanChanged(day);
-      const d = dayInfo(day);
-      logActivity('plan', `${nickname} zrušil(a) ${SLOT_BY_KEY[slot].acc} na ${d.acc} ${d.num}. ${d.m}.`);
+  const setMeal = useCallback((day, slot, rid, opts) => writeMeal(day, slot, rid, opts), [writeMeal]);
+  const removeMeal = useCallback((day, slot, opts) => writeMeal(day, slot, null, opts), [writeMeal]);
+
+  /** Repeat the given 7 days (effective meals incl. members) every week from days[0] on. */
+  const startRepeat = useCallback(
+    async (days) => {
+      const tpl = { from: days[0], by: uid, at: Date.now(), days: {} };
+      days.slice(0, 7).forEach((k) => {
+        const r = resolveDay(k, rawPlan, rawMemberMeals, weekTemplate);
+        const dd = {};
+        if (Object.keys(r.plan).length) dd.plan = r.plan;
+        if (Object.keys(r.members).length) dd.members = r.members;
+        if (Object.keys(dd).length) tpl.days[weekdayKey(k)] = dd;
+      });
+      if (!Object.keys(tpl.days).length) delete tpl.days;
+      await set(ref(db, `${base}/weekTemplate`), tpl);
+      logActivity('plan', `${nickname} nastavil(a) opakování týdne od ${dayInfo(days[0]).shortLabel}`);
     },
-    [base, nickname, logActivity, markPlanChanged]
+    [base, uid, rawPlan, rawMemberMeals, weekTemplate, nickname, logActivity]
+  );
+
+  /** Stop repeating. Days already in the cart / ordered keep their meals (written as concrete days). */
+  const stopRepeat = useCallback(async () => {
+    const updates = { weekTemplate: null };
+    horizon.forEach((k) => {
+      const o = orders[k];
+      if (!o || (o.status !== 'in_cart' && o.status !== 'ordered')) return;
+      const t = templateDay(weekTemplate, k);
+      if (!t) return;
+      const dp = rawPlan[k] || {};
+      const dm = rawMemberMeals[k] || {};
+      SLOTS.forEach((s) => {
+        const tv = t.plan && t.plan[s.key];
+        if (tv && dp[s.key] === undefined) updates[`plan/${k}/${s.key}`] = tv;
+        const tm = (t.members && t.members[s.key]) || {};
+        Object.entries(tm).forEach(([u, v]) => {
+          if (v && !(dm[s.key] && dm[s.key][u] !== undefined)) updates[`memberMeals/${k}/${s.key}/${u}`] = v;
+        });
+      });
+    });
+    await update(ref(db, base), updates);
+    logActivity('plan', `${nickname} zrušil(a) opakování týdne`);
+  }, [base, horizon, orders, weekTemplate, rawPlan, rawMemberMeals, nickname, logActivity]);
+
+  /** Updates (relative to the household) dropping every upcoming / pattern reference to recipes in `gone`. */
+  const recipeRefUpdates = useCallback(
+    (gone) => {
+      const out = {};
+      Object.entries(rawPlan).forEach(([day, slots]) => {
+        if (day < todayKey || !slots) return;
+        Object.entries(slots).forEach(([slot, v]) => {
+          if (gone.has(v)) out[`plan/${day}/${slot}`] = null;
+        });
+      });
+      Object.entries(rawMemberMeals).forEach(([day, slots]) => {
+        if (day < todayKey || !slots) return;
+        Object.entries(slots).forEach(([slot, byUid]) => {
+          Object.entries(byUid || {}).forEach(([u, v]) => {
+            if (gone.has(v)) out[`memberMeals/${day}/${slot}/${u}`] = null;
+          });
+        });
+      });
+      Object.entries((weekTemplate && weekTemplate.days) || {}).forEach(([wd, dd]) => {
+        Object.entries((dd && dd.plan) || {}).forEach(([slot, v]) => {
+          if (gone.has(v)) out[`weekTemplate/days/${wd}/plan/${slot}`] = null;
+        });
+        Object.entries((dd && dd.members) || {}).forEach(([slot, byUid]) => {
+          Object.entries(byUid || {}).forEach(([u, v]) => {
+            if (gone.has(v)) out[`weekTemplate/days/${wd}/members/${slot}/${u}`] = null;
+          });
+        });
+      });
+      return out;
+    },
+    [rawPlan, rawMemberMeals, weekTemplate, todayKey]
   );
 
   /**
@@ -327,6 +457,15 @@ export function HouseholdProvider({ hid, children }) {
         createdBy: prev.createdBy || uid,
         updatedAt: now,
       };
+      // Additional meal types (map { slot: true }), stored only when there is more than one incl. the primary.
+      const typeKeys = new Set(
+        (Array.isArray(draft.types) ? draft.types : Object.keys(draft.types || {})).filter((k) => SLOT_BY_KEY[k])
+      );
+      typeKeys.add(draft.type);
+      if (typeKeys.size > 1) {
+        recipe.types = {};
+        SLOTS.forEach((sl) => { if (typeKeys.has(sl.key)) recipe.types[sl.key] = true; });
+      }
       const updates = { [`${base}/recipes/${rid}`]: recipe };
       let thumb = null;
       if (typeof photo === 'string') thumb = await makeThumb(photo).catch(() => null);
@@ -370,17 +509,14 @@ export function HouseholdProvider({ hid, children }) {
         updates[thumbPath(hid, rid)] = null;
         updates[legacyPhotoPath(hid, rid)] = null;
       }
-      // Remove upcoming plan references (past days are kept untouched).
-      Object.entries(plan).forEach(([day, slots]) => {
-        if (day < todayKey || !slots) return;
-        Object.entries(slots).forEach(([slot, v]) => {
-          if (v === rid) updates[`${base}/plan/${day}/${slot}`] = null;
-        });
+      // Remove upcoming plan / member / weekly pattern references (past days are kept untouched).
+      Object.entries(recipeRefUpdates(new Set([rid]))).forEach(([k, v]) => {
+        updates[`${base}/${k}`] = v;
       });
       await update(ref(db), updates);
       if (r) logActivity('recipe', `${nickname} smazal(a) recept ${r.name}`);
     },
-    [base, hid, recipes, plan, todayKey, nickname, logActivity]
+    [base, hid, recipes, recipeRefUpdates, nickname, logActivity]
   );
 
   // Owner action: drop every recipe (+ photos, upcoming plan slots using them) and seed the default set, in one write.
@@ -393,11 +529,8 @@ export function HouseholdProvider({ hid, children }) {
       updates[thumbPath(hid, rid)] = null;
       updates[legacyPhotoPath(hid, rid)] = null;
     });
-    Object.entries(plan).forEach(([day, slots]) => {
-      if (day < todayKey || !slots) return;
-      Object.entries(slots).forEach(([slot, v]) => {
-        if (old.has(v)) updates[`${base}/plan/${day}/${slot}`] = null;
-      });
+    Object.entries(recipeRefUpdates(old)).forEach(([k, v]) => {
+      updates[`${base}/${k}`] = v;
     });
     const now = Date.now();
     seedRecipeRecords(uid, now).forEach((rec) => {
@@ -405,7 +538,21 @@ export function HouseholdProvider({ hid, children }) {
     });
     await update(ref(db), updates);
     logActivity('recipe', `${nickname} nahradil(a) recepty novou sadou`);
-  }, [base, hid, recipes, plan, todayKey, uid, nickname, logActivity]);
+  }, [base, hid, recipes, recipeRefUpdates, uid, nickname, logActivity]);
+
+  // Any member: add default recipes whose name is not in the household yet (returns how many).
+  const addMissingSeedRecipes = useCallback(async () => {
+    const have = new Set(Object.values(recipes).map((r) => String((r && r.name) || '').trim().toLowerCase()));
+    const missing = seedRecipeRecords(uid, Date.now()).filter((rec) => !have.has(rec.name.trim().toLowerCase()));
+    if (!missing.length) return 0;
+    const updates = {};
+    missing.forEach((rec) => {
+      updates[`${base}/recipes/${push(ref(db, `${base}/recipes`)).key}`] = rec;
+    });
+    await update(ref(db), updates);
+    logActivity('recipe', `${nickname} doplnil(a) ${missing.length} výchozích receptů`);
+    return missing.length;
+  }, [base, recipes, uid, nickname, logActivity]);
 
   const togglePantry = useCallback(
     (key, value) => set(ref(db, `${base}/pantry/${key}`), value),
@@ -488,6 +635,12 @@ export function HouseholdProvider({ hid, children }) {
       horizon,
       recipes,
       plan,
+      memberPlan,
+      fromTemplate,
+      weekTemplate,
+      memberIds,
+      memberName,
+      slotMeals,
       orders,
       pantry,
       members,
@@ -507,9 +660,12 @@ export function HouseholdProvider({ hid, children }) {
       photoFor,
       setMeal,
       removeMeal,
+      startRepeat,
+      stopRepeat,
       saveRecipe,
       deleteRecipe,
       replaceRecipesWithSeed,
+      addMissingSeedRecipes,
       togglePantry,
       setOrderStatus,
       clearOrder,
@@ -522,9 +678,10 @@ export function HouseholdProvider({ hid, children }) {
       saveProductPrefs,
     }),
     [
-      hid, uid, nickname, ready, todayKey, horizon, recipes, plan, orders, pantry, members, settings,
+      hid, uid, nickname, ready, todayKey, horizon, recipes, plan, memberPlan, fromTemplate, weekTemplate, memberIds,
+      memberName, slotMeals, startRepeat, stopRepeat, orders, pantry, members, settings,
       data.joinCode, data.name, activity, alert, pendingDays, statusOf, requestPhoto, photoFor, setMeal, removeMeal,
-      saveRecipe, deleteRecipe, replaceRecipesWithSeed, togglePantry, setOrderStatus, clearOrder, updateSettings, updateHouseholdName, logActivity,
+      saveRecipe, deleteRecipe, replaceRecipesWithSeed, addMissingSeedRecipes, togglePantry, setOrderStatus, clearOrder, updateSettings, updateHouseholdName, logActivity,
       regulars, productPrefs, owner, isOwner, data.rohlik, addRegular, updateRegular, deleteRegular, saveProductPrefs,
     ]
   );

@@ -6,19 +6,30 @@ import Thumb from '../components/Thumb';
 import { Icon } from '../components/ui';
 import logo from '../Images/Cappy.png';
 import { cap, dayInfo } from '../lib/dates';
-import { STATUS, mealCount, mealCountLabel, plannedSlots } from '../lib/meals';
+import { SLOTS, STATUS, mealCount, mealCountLabel } from '../lib/meals';
 import { readStorage, writeStorage } from '../lib/storage';
 import { useIsDesktop } from '../hooks/useMediaQuery';
 import { syncRohlikOrders } from '../services/rohlik';
 import './home.css';
 
 export default function Home() {
-  const { todayKey, horizon, plan, recipes, alert, statusOf, rohlik } = useHousehold();
+  const { todayKey, horizon, plan, memberPlan, memberIds, memberName, slotMeals, recipes, alert, statusOf, rohlik } =
+    useHousehold();
   const { showBanner } = useBanner();
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
   const today = dayInfo(todayKey, todayKey);
-  const todaySlots = plannedSlots(plan[todayKey], recipes);
+  // One entry per recipe eaten today (shared meal + members' own meals).
+  const multi = memberIds.length > 1;
+  const todaySlots = SLOTS.flatMap((s) =>
+    slotMeals(todayKey, s.key).map((e) => ({
+      ...s,
+      rid: e.rid,
+      id: `${s.key}:${e.rid}`,
+      who: !multi ? '' : e.shared ? (e.uids.length < memberIds.length ? 'ostatní' : '') : e.uids.map(memberName).join(', '),
+    }))
+  );
+  const countOf = (k) => mealCount(plan[k], recipes, memberPlan[k], memberIds);
   const next = horizon.slice(1, 4).map((k) => dayInfo(k, todayKey));
   const alertTitle = alert ? alert.title : '';
   const alertTo = alert && alert.allInCart ? '/cart/checkout' : '/cart';
@@ -104,12 +115,12 @@ export default function Home() {
             {todaySlots.length > 0 ? (
               <div className="home__today-grid">
                 {todaySlots.map((s) => {
-                  const rid = plan[todayKey][s.key];
+                  const { rid } = s;
                   return (
-                    <Link key={s.key} to={`/recipes/${rid}`} className="home__meal-card">
+                    <Link key={s.id} to={`/recipes/${rid}`} className="home__meal-card">
                       <Thumb rid={rid} radius={0} emojiSize={58} className="home__meal-img" />
                       <div className="stack" style={{ gap: 3, padding: '14px 16px 16px' }}>
-                        <div className="eyebrow">{s.label}</div>
+                        <div className="eyebrow">{s.who ? `${s.label} · ${s.who}` : s.label}</div>
                         <div className="home__meal-name">{recipes[rid].name}</div>
                       </div>
                     </Link>
@@ -140,7 +151,7 @@ export default function Home() {
                     </div>
                   </div>
                   <div style={{ flex: 1, fontSize: 14, color: 'var(--muted)' }}>
-                    {mealCountLabel(mealCount(plan[d.key], recipes))}
+                    {mealCountLabel(countOf(d.key))}
                   </div>
                   <div className="home__day-status" style={{ color: st.fg, fontSize: 12.5 }}>
                     <span className="dot" style={{ background: st.dot }} />
@@ -197,12 +208,12 @@ export default function Home() {
       {todaySlots.length > 0 ? (
         <div className="list-card" style={{ padding: '6px 16px' }}>
           {todaySlots.map((s) => {
-            const rid = plan[todayKey][s.key];
+            const { rid } = s;
             return (
-              <Link key={s.key} to={`/recipes/${rid}`} className="list-row home__meal">
+              <Link key={s.id} to={`/recipes/${rid}`} className="list-row home__meal">
                 <Thumb rid={rid} size={48} emojiSize={24} />
                 <div className="list-row__body">
-                  <div className="eyebrow">{s.label}</div>
+                  <div className="eyebrow">{s.who ? `${s.label} · ${s.who}` : s.label}</div>
                   <div className="list-row__title ellipsis">{recipes[rid].name}</div>
                 </div>
                 <Icon name="chevron_right" className="chevron" />
@@ -235,7 +246,7 @@ export default function Home() {
                   <div className="home__day-name">{cap(d.dl)}</div>
                   <div className="serif home__day-num">{d.num}.</div>
                 </div>
-                <div className="home__day-count">{mealCountLabel(mealCount(plan[d.key], recipes))}</div>
+                <div className="home__day-count">{mealCountLabel(countOf(d.key))}</div>
                 <div className="home__day-status" style={{ color: st.fg }}>
                   <span className="dot" style={{ background: st.dot }} />
                   {st.label}

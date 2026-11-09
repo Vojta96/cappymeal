@@ -102,15 +102,35 @@ function str(v, max, label, { required = false } = {}) {
 }
 
 /** Recipe as stored in households/{hid}/recipes/{rid} – mirrors database.rules.json. */
+/** Optional additional meal types: array of slots or { slot: true } map -> map (only when > 1 type, incl. primary) or null. */
+function validateRecipeTypes(raw, primary) {
+  if (raw === undefined || raw === null) return null;
+  let list;
+  if (Array.isArray(raw)) list = raw;
+  else if (isPlainObject(raw)) {
+    list = Object.keys(raw);
+    if (Object.values(raw).some((v) => v !== true)) throw new InputError('Neplatný typ jídla.');
+  } else throw new InputError('Neplatný typ jídla.');
+  if (list.length > SLOTS.length || list.some((k) => !SLOTS.includes(k))) throw new InputError('Neplatný typ jídla.');
+  const set = new Set(list);
+  if (set.size === 0) return null;
+  if (!set.has(primary)) throw new InputError('Neplatný typ jídla.');
+  if (set.size < 2) return null;
+  const out = {};
+  SLOTS.forEach((k) => { if (set.has(k)) out[k] = true; });
+  return out;
+}
+
 function validateRecipe(r, uid, now) {
   if (!isPlainObject(r)) throw new InputError('Neplatný recept.');
   const name = str(r.name, 80, 'název', { required: true });
   if (!SLOTS.includes(r.type)) throw new InputError('Neplatný typ jídla.');
+  const types = validateRecipeTypes(r.types, r.type);
   const ingredients = Array.isArray(r.ingredients) ? r.ingredients : [];
   if (ingredients.length > 60) throw new InputError('Recept má příliš mnoho surovin.');
   const builtin = r.builtinImage == null ? null : r.builtinImage;
   if (builtin !== null && !BUILTIN_IMAGES.includes(builtin)) throw new InputError('Neplatný obrázek.');
-  return {
+  const out = {
     name,
     emoji: str(r.emoji, 16, 'emoji') || '🍽️',
     type: r.type,
@@ -125,6 +145,8 @@ function validateRecipe(r, uid, now) {
     createdBy: uid,
     updatedAt: now,
   };
+  if (types) out.types = types;
+  return out;
 }
 
 function validateSeedRecipes(list, uid, now) {

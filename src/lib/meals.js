@@ -1,5 +1,6 @@
 // Pure meal-planning logic (no Firebase, no React) – easy to unit test.
 import { cap, dayInfo, plural } from './dates';
+import { slotEntries } from './planModel';
 
 export const SLOTS = [
   { key: 'breakfast', label: 'Snídaně', acc: 'snídani' },
@@ -25,19 +26,26 @@ export const MIN_ORDER_KC = 749;
 export const ingredientKey = (name) =>
   String(name || '').trim().toLowerCase().replace(/[.#$/[\]]/g, '_');
 
-/** Slots of a day that point to an existing recipe. */
-export function plannedSlots(dayPlan, recipes) {
-  if (!dayPlan) return [];
-  return SLOTS.filter((s) => dayPlan[s.key] && (!recipes || recipes[dayPlan[s.key]]));
+/**
+ * Slots of a day where someone eats an existing recipe (the shared meal or a member's own meal).
+ * dayMembers = effective memberPlan[day] ({ slot: { uid: rid|'-' } }), memberIds = current members.
+ */
+export function plannedSlots(dayPlan, recipes, dayMembers, memberIds) {
+  if (!dayPlan && !dayMembers) return [];
+  const dp = dayPlan || {};
+  if (!dayMembers || !memberIds || !memberIds.length) {
+    return SLOTS.filter((s) => dp[s.key] && (!recipes || recipes[dp[s.key]]));
+  }
+  return SLOTS.filter((s) => slotEntries(dp[s.key], dayMembers[s.key], memberIds, recipes).length > 0);
 }
 
-export function mealCount(dayPlan, recipes) {
-  return plannedSlots(dayPlan, recipes).length;
+export function mealCount(dayPlan, recipes, dayMembers, memberIds) {
+  return plannedSlots(dayPlan, recipes, dayMembers, memberIds).length;
 }
 
 /** 'ordered' | 'in_cart' | 'pending' | 'empty' – see CONTRACT.md */
-export function dayStatus(dayPlan, order, recipes) {
-  if (!mealCount(dayPlan, recipes)) return 'empty';
+export function dayStatus(dayPlan, order, recipes, dayMembers, memberIds) {
+  if (!mealCount(dayPlan, recipes, dayMembers, memberIds)) return 'empty';
   if (order && order.status === 'ordered') return 'ordered';
   if (order && order.status === 'in_cart') return 'in_cart';
   return 'pending';
@@ -48,15 +56,23 @@ export function mealCountLabel(n) {
 }
 
 /**
- * Aggregate ingredients of the given days.
+ * Aggregate ingredients of the given days. Every distinct recipe of a slot is counted once (the shared meal,
+ * when someone still eats it, plus the members' own meals).
  * @returns [{ key, name, amounts: string[], meals: string[] }] sorted by name (cs).
  */
-export function aggregateIngredients(dayKeys, plan, recipes) {
+export function aggregateIngredients(dayKeys, plan, recipes, memberPlan, memberIds) {
   const map = {};
   for (const day of dayKeys) {
     const dp = (plan && plan[day]) || {};
+    const dm = (memberPlan && memberPlan[day]) || {};
+    const rids = [];
     for (const s of SLOTS) {
-      const r = dp[s.key] && recipes[dp[s.key]];
+      if (memberIds && memberIds.length) {
+        slotEntries(dp[s.key], dm[s.key], memberIds, recipes).forEach((e) => rids.push(e.rid));
+      } else if (dp[s.key]) rids.push(dp[s.key]);
+    }
+    for (const rid of rids) {
+      const r = recipes[rid];
       if (!r) continue;
       for (const g of r.ingredients || []) {
         const key = ingredientKey(g.name);
@@ -154,3 +170,15 @@ export function buildAlert(todayKey, horizon, statusOf, shift = 0) {
       : `Jídlo by mělo dorazit nejpozději ${f.index > 1 ? 'den předem' : 'dnes'}. Připomeneme se 3 dny dopředu a pak každý den, dokud neobjednáte.`;
   return { days: days.map((d) => d.key), title, text, allInCart };
 }
+
+/**
+ * Meal types (slot keys) a recipe fits. `type` is the primary one; optional `types: { slot: true }` adds more
+ * (e.g. fruit for breakfast, snack and afternoon snack). Ordered like SLOTS.
+ */
+export function recipeTypes(r) {
+  if (!r) return [];
+  const set = new Set([r.type, ...Object.keys(r.types || {}).filter((k) => r.types[k])]);
+  return SLOTS.map((s) => s.key).filter((k) => set.has(k));
+}
+
+export const recipeHasType = (r, slot) => recipeTypes(r).includes(slot);

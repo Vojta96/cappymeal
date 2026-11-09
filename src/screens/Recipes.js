@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useHousehold } from '../context/HouseholdContext';
 import Thumb from '../components/Thumb';
 import { Icon } from '../components/ui';
-import { SLOTS, TYPE_LABEL } from '../lib/meals';
+import { SLOTS, TYPE_LABEL, recipeHasType, recipeTypes } from '../lib/meals';
 import { readStorage, writeStorage } from '../lib/storage';
 import './recipes.css';
 
@@ -28,7 +28,7 @@ export default function Recipes() {
   const q = query.trim().toLowerCase();
   const list = all.filter(
     ([, r]) =>
-      (!filter || r.type === filter) &&
+      (!filter || recipeHasType(r, filter)) &&
       (!q ||
         r.name.toLowerCase().includes(q) ||
         (r.ingredients || []).some((i) => String(i.name).toLowerCase().includes(q)))
@@ -89,7 +89,7 @@ export default function Recipes() {
             <div className="stack" style={{ gap: 2, padding: '0 2px' }}>
               <div className="recipes__name">{r.name}</div>
               <div className="list-row__sub">
-                {[TYPE_LABEL[r.type], r.preparation].filter(Boolean).join(' · ')}
+                {[recipeTypes(r).map((k) => TYPE_LABEL[k]).join(', '), r.preparation].filter(Boolean).join(' · ')}
               </div>
             </div>
           </Link>

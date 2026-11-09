@@ -12,6 +12,7 @@ export function seedRecipeList() {
     name: m.name,
     emoji: m.emoji || '🍽️',
     type: m.type,
+    ...(m.types ? { types: m.types } : {}),
     preparation: m.preparation || '',
     instructions: m.instructions || '',
     ingredients: (m.ingredients || []).map((g) => ({ name: g.name, amount: g.amount || '' })),
@@ -32,6 +33,7 @@ export function seedRecipeRecords(uid, now) {
       createdBy: uid,
       updatedAt: now,
     };
+    if (r.types) rec.types = r.types;
     if (r.ingredients.length) rec.ingredients = r.ingredients;
     if (r.builtinImage) rec.builtinImage = r.builtinImage;
     return rec;

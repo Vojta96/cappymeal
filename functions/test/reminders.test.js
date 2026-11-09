@@ -41,3 +41,31 @@ test('prague date/hour (DST)', () => {
   assert.strictEqual(r.pragueHour(d), 0);
   assert.strictEqual(r.pragueHour(new Date('2026-11-07T08:00:00Z')), 9);
 });
+
+test('legacy: "-" in plan counts as empty', () => {
+  const p = { '2026-11-13': { lunch: '-' }, '2026-11-14': { lunch: '-', dinner: 'b' } };
+  assert.deepStrictEqual(r.computeReminderDates('2026-11-12', p, {}, {}), ['2026-11-14']);
+});
+test('effectiveHasMeals: template, overrides, member meals', () => {
+  // 2026-11-16 is Monday (d1)
+  const tpl = { from: '2026-11-10', days: { d1: { plan: { lunch: 'a' }, members: { dinner: { bob: 'r2', al: '-' } } } } };
+  const ids = ['al', 'bob'];
+  assert.strictEqual(r.effectiveHasMeals('2026-11-16', {}, {}, tpl, ids), true);
+  // before template start
+  assert.strictEqual(r.effectiveHasMeals('2026-11-09', {}, {}, { ...tpl, from: '2026-11-20' }, ids), false);
+  // shared '-' hides template lunch, bob's template dinner still counts
+  assert.strictEqual(r.effectiveHasMeals('2026-11-16', { '2026-11-16': { lunch: '-' } }, {}, tpl, ids), true);
+  // bob '=' cancels template dinner, '-' hides lunch -> nothing
+  const mm = { '2026-11-16': { dinner: { bob: '=' } } };
+  assert.strictEqual(r.effectiveHasMeals('2026-11-16', { '2026-11-16': { lunch: '-' } }, mm, tpl, ids), false);
+  // member own meal without shared plan
+  assert.strictEqual(r.effectiveHasMeals('2026-11-17', {}, { '2026-11-17': { lunch: { al: 'r9' } } }, null, ids), true);
+  // member '-' / '=' only
+  assert.strictEqual(r.effectiveHasMeals('2026-11-17', {}, { '2026-11-17': { lunch: { al: '-', bob: '=' } } }, null, ids), false);
+  // uid not in memberIds ignored
+  assert.strictEqual(r.effectiveHasMeals('2026-11-17', {}, { '2026-11-17': { lunch: { gone: 'r9' } } }, null, ids), false);
+});
+test('computeReminderDates uses extra (template only day)', () => {
+  const tpl = { from: '2026-11-01', days: { d5: { plan: { lunch: 'a' } } } }; // Fridays
+  assert.deepStrictEqual(r.computeReminderDates('2026-11-10', {}, {}, {}, { memberMeals: {}, weekTemplate: tpl, memberIds: [] }), ['2026-11-13']);
+});
