@@ -320,6 +320,43 @@ function resultText(result) {
   return ((result && result.content) || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
 }
 
+// ---------- product images ----------
+
+// The MCP search returns no images; Rohlík's public web API does (batch: ?products=1&products=2…).
+const PRODUCTS_API = 'https://www.rohlik.cz/api/v1/products';
+const IMG_CHUNK = 40;
+
+/** productIds -> Map(id -> { imageUrl, url }) (best effort, never throws). */
+async function fetchProductImages(ids) {
+  const out = new Map();
+  const uniq = [...new Set(ids.map(String).filter((x) => /^\d{1,12}$/.test(x)))];
+  for (let i = 0; i < uniq.length; i += IMG_CHUNK) {
+    const chunk = uniq.slice(i, i + IMG_CHUNK);
+    const qs = chunk.map((id) => `products=${id}`).join('&');
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await fetch(`${PRODUCTS_API}?${qs}`, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) continue;
+      // eslint-disable-next-line no-await-in-loop
+      const arr = await res.json();
+      (Array.isArray(arr) ? arr : []).forEach((p) => {
+        const img = p && Array.isArray(p.images) && p.images.find((u) => /^https:\/\/cdn\.rohlik\.cz\//.test(u));
+        if (!p || p.id == null) return;
+        out.set(String(p.id), {
+          imageUrl: img ? `https://cdn.rohlik.cz/cdn-cgi/image/f=auto,w=320/${img}` : '',
+          url: p.slug ? `https://www.rohlik.cz/${p.id}-${p.slug}` : `https://www.rohlik.cz/${p.id}`,
+        });
+      });
+    } catch (e) {
+      console.warn('Rohlík product images failed:', (e && e.message) || '');
+    }
+  }
+  return out;
+}
+
 // ---------- query simplification ----------
 
 function simplifyQuery(name) {
@@ -442,4 +479,5 @@ async function addToCart(client, products) {
 module.exports = {
   pickSearchTool, pickAddTool, buildSearchArgs, buildAddCalls, parseProducts,
   normaliseProduct, rawProducts, describeKeys, simplifyQuery, MAX_VARIANTS, SEARCH_LIMIT, connect, listTools, searchProducts, addToCart,
+  fetchProductImages,
 };

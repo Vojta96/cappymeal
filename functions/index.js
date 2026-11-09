@@ -590,6 +590,18 @@ exports.rohlikMatch = onCall(ROHLIK, handle('rohlikMatch', async (request) => {
       }
     }
     await Promise.all(Array.from({ length: Math.min(4, items.length) }, worker));
+    // Images come from Rohlík's public product API (the MCP search has none). Best effort.
+    const ids = [];
+    results.forEach((r) => ((r && r.candidates) || []).forEach((c) => c && c.productId && ids.push(c.productId)));
+    if (ids.length) {
+      const imgs = await rohlik.fetchProductImages(ids);
+      results.forEach((r) => ((r && r.candidates) || []).forEach((c) => {
+        const m = c && imgs.get(String(c.productId));
+        if (!m) return;
+        if (!c.imageUrl && m.imageUrl) c.imageUrl = m.imageUrl;
+        if (!c.url && m.url) c.url = m.url;
+      }));
+    }
     return { results };
   });
 }));
