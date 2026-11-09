@@ -72,6 +72,30 @@ function rohlikUrl(v) {
   }
 }
 
+// ---------- checkout warnings ----------
+
+// Rohlík's validation_warnings are written for AI assistants ("Please ask the user…", in English).
+// Translate the known ones, drop the rest unless they're already Czech.
+const WARNING_MAP = [
+  [/timeslot|time slot/i, 'Vyberte čas doručení.'],
+  [/address/i, 'Zkontrolujte adresu doručení.'],
+  [/payment/i, 'Zvolte způsob platby.'],
+  [/minimal|minimum/i, 'Nákup ještě nedosahuje minimální hodnoty objednávky.'],
+  [/empty cart|cart is empty/i, 'Košík je prázdný.'],
+];
+const GENERIC_NOT_READY = /checkout is not ready|ask the user|assistant|retrieve the available/i;
+const CZECH_CHARS = /[áčďéěíňóřšťúůýž]/i;
+
+function localizeWarnings(list) {
+  const out = [];
+  list.filter(isStr).forEach((w) => {
+    const hit = WARNING_MAP.find(([re]) => re.test(w));
+    if (hit) out.push(hit[1]);
+    else if (!GENERIC_NOT_READY.test(w) && CZECH_CHARS.test(w)) out.push(str(w, 200));
+  });
+  return [...new Set(out)].slice(0, 6);
+}
+
 // ---------- cart (get_cart) ----------
 
 /**
@@ -254,8 +278,7 @@ function parseCheckout(payload, addressesPayload) {
       lines: (Array.isArray(od.price_breakdown) ? od.price_breakdown : []).filter(isStr).map(splitLine).slice(0, 10),
       note: str(od.price_note, 300),
     },
-    warnings: (Array.isArray(p.validation_warnings) ? p.validation_warnings : []).filter(isStr)
-      .map((w) => str(w, 200)).filter(Boolean).slice(0, 6),
+    warnings: localizeWarnings(Array.isArray(p.validation_warnings) ? p.validation_warnings : []),
     ready: p.checkout_ready === true,
     suborderAvailable: isObj(p.suborder) ? p.suborder.available === true : false,
   };

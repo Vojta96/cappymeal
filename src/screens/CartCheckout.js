@@ -753,7 +753,7 @@ export default function CartCheckout() {
           })}
         </div>
       )}
-      {checkout && checkout.slot.text && (
+      {checkout && checkout.slot.id && checkout.slot.text && (
         <div className="co-note">
           <Icon name="schedule" size={18} />
           Vybráno: {checkout.slot.text}

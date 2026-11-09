@@ -456,10 +456,16 @@ async function callJson(client, name, args) {
   const res = await callAllowed(client, name, args);
   const txt = resultText(res);
   if (res && res.isError) throw new ToolError(name, errorSummary(txt));
-  if (res && res.structuredContent && typeof res.structuredContent === 'object') return res.structuredContent;
+  // Prefer the JSON text (that's the verified shape). structuredContent is the same data wrapped as
+  // { result: … } by Rohlík's server – reading it unwrapped made get_cart look empty.
   try {
     return JSON.parse(txt);
   } catch (e) {
+    const sc = res && res.structuredContent;
+    if (sc && typeof sc === 'object') {
+      const keys = Object.keys(sc);
+      return keys.length === 1 && keys[0] === 'result' && sc.result && typeof sc.result === 'object' ? sc.result : sc;
+    }
     return { text: txt };
   }
 }

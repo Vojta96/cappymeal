@@ -630,11 +630,30 @@ exports.rohlikFillCart = onCall(ROHLIK, handle('rohlikFillCart', async (request)
   const { days, products } = v.validateFillCart(request.data);
   await requireConnected(hid);
   await limit(`h/${hid}/rohlikFillCart`, 10);
-  const out = await withClient(hid, (client) => rohlik.addToCart(client, products));
+  // Never double the cart: add only what is missing compared with the current Rohlík cart
+  // (a refill after a misread "empty cart" doubled every item once).
+  let already = 0;
+  const out = await withClient(hid, async (client) => {
+    let toAdd = products;
+    try {
+      const cart = co.parseCart(await rohlik.callJson(client, 'get_cart', { context: 'Kontrola košíku před vložením nákupu z CappyMeal.' }));
+      const have = new Map(cart.items.map((it) => [String(it.productId), it.quantity]));
+      toAdd = [];
+      products.forEach((p) => {
+        const missing = p.quantity - (have.get(String(p.productId)) || 0);
+        if (missing > 0) toAdd.push({ ...p, quantity: missing });
+        else already += 1;
+      });
+    } catch (e) {
+      console.warn('rohlikFillCart: cart read failed, adding all:', (e && e.message) || '');
+    }
+    if (!toAdd.length) return { added: 0, failed: [] };
+    return rohlik.addToCart(client, toAdd);
+  });
   if (out.failed.length) {
     console.warn('rohlikFillCart: failed items', out.failed.length, (out.failed[0] && out.failed[0].error) || '');
   }
-  if (out.added > 0) {
+  if (out.added > 0 || already > 0) {
     const at = Date.now();
     const updates = {};
     days.forEach((d) => { updates[`households/${hid}/orders/${d}`] = { status: 'in_cart', at, by: uid }; });
@@ -645,7 +664,8 @@ exports.rohlikFillCart = onCall(ROHLIK, handle('rohlikFillCart', async (request)
     await db().ref().update(updates);
   }
   return {
-    ok: out.added > 0 && out.failed.length === 0,
+    ok: (out.added > 0 || already > 0) && out.failed.length === 0,
+    already,
     added: out.added,
     failed: out.failed.map((f) => ({ productId: f.productId })),
   };
