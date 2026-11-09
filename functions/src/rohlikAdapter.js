@@ -14,7 +14,8 @@ function pickTool(tools, re, exclude) {
     || null;
 }
 const pickSearchTool = (tools) => pickTool(tools, SEARCH_RE, NOT_SEARCH_RE);
-const pickAddTool = (tools) => pickTool(tools, ADD_RE);
+// Prefer a real "add ... to cart" tool (Rohlík: add_items_to_cart) over update_cart_item.
+const pickAddTool = (tools) => pickTool(tools, /add.*(cart|basket)/i) || pickTool(tools, ADD_RE);
 
 function props(tool) {
   return (tool && tool.inputSchema && tool.inputSchema.properties) || {};
@@ -34,8 +35,24 @@ const ID_NAMES = ['productId', 'product_id', 'id', 'productIds', 'product_ids'];
 const QTY_NAMES = ['quantity', 'qty', 'amount', 'count'];
 
 function buildSearchArgs(tool, query) {
-  const key = findProp(tool, QUERY_NAMES) || Object.keys(props(tool))[0] || 'query';
-  const args = { [key]: query };
+  const key = findProp(tool, [...QUERY_NAMES, 'queries', 'keywords_list', 'terms']) || Object.keys(props(tool))[0] || 'query';
+  const schema = props(tool)[key] || {};
+  let value = query;
+  if (schema.type === 'array') {
+    // Batch tools (e.g. Rohlík's batch_search_products) take a list of queries.
+    const items = schema.items || {};
+    if (items.type === 'object') {
+      const ip = items.properties || {};
+      const qk = matchKey(ip, QUERY_NAMES) || Object.keys(ip)[0] || 'query';
+      const item = { [qk]: query };
+      const lk = matchKey(ip, ['limit', 'pageSize', 'page_size', 'max_results']);
+      if (lk) item[lk] = SEARCH_LIMIT;
+      value = [item];
+    } else {
+      value = [query];
+    }
+  }
+  const args = { [key]: value };
   const lim = findProp(tool, ['limit', 'pageSize', 'page_size', 'max_results']);
   if (lim) args[lim] = SEARCH_LIMIT;
   return args;
@@ -356,10 +373,12 @@ async function searchProducts(client, query, { onRaw, onDiag } = {}) {
   const res = await client.callTool({ name: tool.name, arguments: args });
   if (onDiag) {
     // Diagnostics (public catalogue data only, never tokens): which tool, which args, what came back.
+    const addTool = pickAddTool(tools);
     onDiag({
-      tools: tools.map((t) => t.name),
       tool: tool.name,
-      schema: Object.keys(props(tool)),
+      searchSchema: JSON.stringify(tool.inputSchema || {}).slice(0, 1500),
+      addTool: addTool ? addTool.name : null,
+      addSchema: addTool ? JSON.stringify(addTool.inputSchema || {}).slice(0, 1500) : null,
       args,
       isError: !!res.isError,
       contentTypes: (res.content || []).map((c) => c.type),
