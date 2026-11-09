@@ -14,6 +14,7 @@ const rl = require('./src/rateLimit');
 const oauth = require('./src/rohlikOAuth');
 const matcher = require('./src/matcher');
 const co = require('./src/checkout');
+const dl = require('./src/deliveries');
 
 const DB_URL = 'https://cappymeal-go-default-rtdb.europe-west1.firebasedatabase.app';
 admin.initializeApp({ databaseURL: DB_URL });
@@ -809,10 +810,13 @@ exports.rohlikCheckoutLink = onCall(ROHLIK, handle('rohlikCheckoutLink', async (
   },
 )));
 
+let loggedSlotShape = false;
+
 /**
  * Detects what happened on Rohlík with the household's in_cart days: an order placed after the cart was filled
- * → days 'ordered' (reminders stop); empty cart and no new order → days back to pending. No in_cart days →
- * Rohlík is not called at all.
+ * → days 'ordered' (reminders stop) + its delivery window stored in `deliveries/{orderId}`; empty cart and no new
+ * order → days back to pending. Stored deliveries that are not over yet are refreshed (window / state) from the
+ * same fetch_orders call. Neither in_cart days nor pending deliveries → Rohlík is not called at all.
  */
 exports.rohlikSyncOrders = onCall(ROHLIK, handle('rohlikSyncOrders', async (request) => {
   const { uid, hid } = await requireMember(request);
@@ -821,8 +825,10 @@ exports.rohlikSyncOrders = onCall(ROHLIK, handle('rohlikSyncOrders', async (requ
   const readInCart = async () => Object.entries((await ordersRef.orderByKey().startAt(today).get()).val() || {})
     .filter(([, o]) => o && o.status === 'in_cart')
     .map(([day, o]) => ({ day, at: Number(o.at) || 0 }));
-  const inCart = await readInCart();
-  if (!inCart.length) return { result: 'idle', days: [] };
+  const [inCart, storedSnap] = await Promise.all([readInCart(), db().ref(`households/${hid}/deliveries`).get()]);
+  const stored = storedSnap.val() || {};
+  const refreshIds = dl.pendingIds(stored, Date.now());
+  if (!inCart.length && !refreshIds.length) return { result: 'idle', days: [] };
   if (!(await db().ref(`rohlikCredentials/${hid}`).get()).exists()) return { result: 'idle', days: [] };
   await limit(`h/${hid}/rohlikSyncOrders`, 60);
   const { orders, cart } = await withClient(hid, async (client) => {
@@ -830,43 +836,88 @@ exports.rohlikSyncOrders = onCall(ROHLIK, handle('rohlikSyncOrders', async (requ
     let o = null;
     let c = null;
     try {
-      o = await co.loadOrders(call);
+      o = await co.loadOrders(call, { keepCancelled: true });
     } catch (e) {
       if (!(e instanceof rohlik.ToolError)) throw e;
       console.warn('rohlikSyncOrders: fetch_orders failed:', e.detail);
     }
-    try {
-      c = await co.loadCart(call);
-    } catch (e) {
-      if (!(e instanceof rohlik.ToolError)) throw e;
-      console.warn('rohlikSyncOrders: get_cart failed:', e.detail);
+    if (inCart.length) {
+      try {
+        c = await co.loadCart(call);
+      } catch (e) {
+        if (!(e instanceof rohlik.ToolError)) throw e;
+        console.warn('rohlikSyncOrders: get_cart failed:', e.detail);
+      }
     }
     return { orders: o, cart: c };
   });
-  const decision = co.decideSync({ inCart, orders, cart, now: Date.now() });
-  if (decision.action === 'none') return { result: 'none', days: [] };
-  // Re-read right before writing: only days still in_cart with the same fill time are touched.
-  const fresh = await readInCart();
-  const same = fresh.filter((x) => inCart.some((y) => y.day === x.day && y.at === x.at)).map((x) => x.day);
-  if (!same.length) return { result: 'none', days: [] };
-  const at = Date.now();
+  const now = Date.now();
+  const decision = co.decideSync({ inCart, orders, cart, now });
   const updates = {};
-  if (decision.action === 'ordered') {
-    same.forEach((d) => {
-      updates[`households/${hid}/orders/${d}`] = { status: 'ordered', at, by: uid, rohlikOrderId: decision.order.id };
+  const out = { result: 'none', days: [] };
+  const incoming = [];
+
+  if (decision.action !== 'none') {
+    // Re-read right before writing: only days still in_cart with the same fill time are touched.
+    const fresh = await readInCart();
+    const same = fresh.filter((x) => inCart.some((y) => y.day === x.day && y.at === x.at)).map((x) => x.day);
+    if (same.length) {
+      if (decision.action === 'ordered') {
+        same.forEach((d) => {
+          updates[`households/${hid}/orders/${d}`] = { status: 'ordered', at: now, by: uid, rohlikOrderId: decision.order.id };
+        });
+        const actKey = db().ref(`households/${hid}/activity`).push().key;
+        updates[`households/${hid}/activity/${actKey}`] = {
+          type: 'order', text: 'Objednávka na Rohlíku je potvrzená – připomínky pro tyto dny jsme vypnuli.', by: uid, at: now,
+        };
+        const w = decision.order.delivery;
+        if (w) {
+          incoming.push({ id: decision.order.id, start: w.start, end: w.end, state: decision.order.state, days: same });
+        } else if (!loggedSlotShape) {
+          // masked shape only (digits → 9, letters → a) – tune parseDeliveryWindow from it
+          loggedSlotShape = true;
+          console.warn('rohlikSyncOrders: delivery window not parsed, slot shape:', decision.order.slotShape,
+            'timeRange shape:', decision.order.slotTextShape);
+        }
+        out.order = { id: decision.order.id, slotText: decision.order.slotText, totalText: decision.order.totalText };
+      } else {
+        same.forEach((d) => { updates[`households/${hid}/orders/${d}`] = null; });
+      }
+      out.result = decision.action;
+      out.days = same;
+    }
+  }
+
+  // Refresh stored deliveries that are not over yet (window moved in Rohlík, delivered, cancelled).
+  if (orders) {
+    refreshIds.forEach((id) => {
+      if (incoming.some((x) => String(x.id) === id)) return;
+      const o = orders.find((x) => String(x.id) === id);
+      if (!o) return;
+      incoming.push({
+        id,
+        start: o.delivery ? o.delivery.start : null,
+        end: o.delivery ? o.delivery.end : null,
+        state: o.cancelled ? (o.state || 'CANCELLED') : o.state,
+      });
     });
-    const actKey = db().ref(`households/${hid}/activity`).push().key;
-    updates[`households/${hid}/activity/${actKey}`] = {
-      type: 'order', text: 'Objednávka na Rohlíku je potvrzená – připomínky pro tyto dny jsme vypnuli.', by: uid, at,
-    };
-  } else {
-    same.forEach((d) => { updates[`households/${hid}/orders/${d}`] = null; });
   }
-  await db().ref().update(updates);
-  const out = { result: decision.action, days: same };
-  if (decision.action === 'ordered') {
-    out.order = { id: decision.order.id, slotText: decision.order.slotText, totalText: decision.order.totalText };
+  if (incoming.length) {
+    const merged = dl.mergeDeliveries(stored, incoming, now);
+    Object.entries(merged.updates).forEach(([k, val]) => { updates[`households/${hid}/deliveries/${k}`] = val; });
+    updates[`deliveryIndex/${hid}`] = merged.nextStart;
+    merged.created.forEach((c, i) => {
+      const actKey = db().ref(`households/${hid}/activity`).push().key;
+      updates[`households/${hid}/activity/${actKey}`] = {
+        type: 'order', text: `Objednávka z Rohlíku: doručení ${c.text}`.slice(0, 200), by: uid, at: now + 1 + i,
+      };
+    });
+    if (out.order && decision.order.delivery) {
+      const w = decision.order.delivery;
+      out.order.delivery = { start: w.start, end: w.end, text: dl.windowText(w.start, w.end) };
+    }
   }
+  if (Object.keys(updates).length) await db().ref().update(updates);
   return out;
 }));
 
@@ -913,7 +964,15 @@ async function remindHousehold(hid, hour, today) {
     memberMeals: memberMealsSnap.val() || {}, weekTemplate: templateSnap.val(), memberIds,
   }));
   if (!msg) return;
-  const pushTokens = (await base.child('pushTokens').get()).val() || {};
+  await sendPush(hid, msg, '/cart');
+}
+
+/**
+ * Sends one notification to every push token of the household; tokens FCM reports as dead are removed.
+ * link: same-origin path (the service worker only navigates to same-origin URLs).
+ */
+async function sendPush(hid, msg, link) {
+  const pushTokens = (await db().ref(`households/${hid}/pushTokens`).get()).val() || {};
   const tokens = [];
   for (const [uid, byId] of Object.entries(pushTokens)) {
     for (const [id, t] of Object.entries(byId || {})) {
@@ -924,8 +983,8 @@ async function remindHousehold(hid, hour, today) {
   const res = await admin.messaging().sendEachForMulticast({
     tokens: tokens.map((t) => t.token),
     notification: { title: msg.title, body: msg.body },
-    data: { link: '/cart' },
-    webpush: { fcmOptions: { link: 'https://cappymeal-go.web.app/cart' } },
+    data: { link },
+    webpush: { fcmOptions: { link: `https://cappymeal-go.web.app${link}` } },
   });
   const removals = {};
   res.responses.forEach((r, i) => {
@@ -952,6 +1011,40 @@ exports.dailyReminders = onSchedule(
         await remindHousehold(hid, hour, today);
       } catch (e) {
         console.error('reminder failed for', hid, (e && e.message) || '');
+      }
+    }
+  },
+);
+
+// ---------- delivery notifications ----------
+
+/** One household from deliveryIndex. notified.* is written BEFORE sending, so a retried run never sends twice. */
+async function notifyDeliveries(hid, now) {
+  const base = db().ref(`households/${hid}`);
+  const [delSnap, setSnap] = await Promise.all([base.child('deliveries').get(), base.child('settings').get()]);
+  const entries = delSnap.val() || {};
+  const due = dl.dueNotifications(entries, setSnap.val() || {}, now);
+  const updates = { [`deliveryIndex/${hid}`]: dl.nextStartOf(entries, now) };
+  due.forEach((n) => n.mark.forEach((k) => { updates[`households/${hid}/deliveries/${n.id}/notified/${k}`] = true; }));
+  await db().ref().update(updates);
+  for (const n of due) {
+    // eslint-disable-next-line no-await-in-loop
+    await sendPush(hid, n.message, '/');
+  }
+}
+
+exports.deliveryReminders = onSchedule(
+  { schedule: '*/15 * * * *', timeZone: rem.TZ, region: 'europe-west1', maxInstances: 1 },
+  async () => {
+    const now = Date.now();
+    const index = (await db().ref('deliveryIndex').get()).val() || {};
+    for (const [hid, nextStart] of Object.entries(index)) {
+      if (!dl.dueForCheck(Number(nextStart), now)) continue;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await notifyDeliveries(hid, now);
+      } catch (e) {
+        console.error('delivery reminder failed for', hid, (e && e.message) || '');
       }
     }
   },

@@ -34,7 +34,7 @@ export const HouseholdContext = createContext(null);
 
 const SUBTREES = [
   'recipes', 'plan', 'orders', 'pantry', 'settings', 'members', 'joinCode', 'name', 'owner', 'rohlik', 'regulars',
-  'productPrefs', 'memberMeals', 'weekTemplate',
+  'productPrefs', 'memberMeals', 'weekTemplate', 'deliveries',
 ];
 
 // Recipe photos: householdPhotos/{hid}/{rid}; households/{hid}/photos/{rid} is the read-only legacy location.
@@ -112,6 +112,8 @@ export function HouseholdProvider({ hid, children }) {
   const members = useMemo(() => data.members || {}, [data.members]);
   const regulars = useMemo(() => data.regulars || {}, [data.regulars]);
   const productPrefs = useMemo(() => data.productPrefs || {}, [data.productPrefs]);
+  // Rohlík delivery windows (server-written by rohlikSyncOrders, read-only for clients).
+  const deliveries = useMemo(() => data.deliveries || {}, [data.deliveries]);
   const settings = useMemo(() => ({ ...DEFAULT_SETTINGS, ...(data.settings || {}) }), [data.settings]);
   const ready = SUBTREES.every((n) => loaded[n]);
   const owner = data.owner || null;
@@ -647,6 +649,7 @@ export function HouseholdProvider({ hid, children }) {
       settings,
       regulars,
       productPrefs,
+      deliveries,
       owner,
       isOwner,
       rohlik: data.rohlik || null,
@@ -682,7 +685,7 @@ export function HouseholdProvider({ hid, children }) {
       memberName, slotMeals, startRepeat, stopRepeat, orders, pantry, members, settings,
       data.joinCode, data.name, activity, alert, pendingDays, statusOf, requestPhoto, photoFor, setMeal, removeMeal,
       saveRecipe, deleteRecipe, replaceRecipesWithSeed, addMissingSeedRecipes, togglePantry, setOrderStatus, clearOrder, updateSettings, updateHouseholdName, logActivity,
-      regulars, productPrefs, owner, isOwner, data.rohlik, addRegular, updateRegular, deleteRegular, saveProductPrefs,
+      regulars, productPrefs, deliveries, owner, isOwner, data.rohlik, addRegular, updateRegular, deleteRegular, saveProductPrefs,
     ]
   );
 

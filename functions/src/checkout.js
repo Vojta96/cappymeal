@@ -4,6 +4,8 @@
 // Returned objects contain only what the CappyMeal UI needs – never contact data, order contents or
 // payment details. Nothing here logs values.
 
+const deliveries = require('./deliveries');
+
 const PRODUCT_ID_RE = /^\d{1,12}$/;
 const SLOT_ID_RE = /^\d{1,15}$/;
 const CODE_RE = /^[A-Z0-9_]{1,40}$/;
@@ -386,19 +388,29 @@ function parseOrderTime(v) {
   return null;
 }
 
-/** Verified order keys: id, orderTime, state, deliverySlot{type,timeRange}, priceComposition{total{amount}}, … (items/address dropped). */
-function parseOrders(payload) {
+/**
+ * Verified order keys: id, orderTime, state, deliverySlot{type,timeRange}, priceComposition{total{amount}}, … (items/address
+ * dropped). `delivery` = parsed window { start, end } | null (functions/src/deliveries.js parseDeliveryWindow).
+ * Cancelled orders are dropped unless keepCancelled (then they carry `cancelled: true`).
+ */
+function parseOrders(payload, { keepCancelled = false } = {}) {
   const list = isObj(payload) && Array.isArray(payload.orders) ? payload.orders : [];
   return list.filter(isObj).map((o) => {
     const total = isObj(o.priceComposition) && isObj(o.priceComposition.total) ? num(o.priceComposition.total.amount) : num(o.totalPrice);
+    const timeMs = parseOrderTime(o.orderTime);
+    const state = code(o.state);
     return {
       id: safeInt(o.id),
-      timeMs: parseOrderTime(o.orderTime),
-      state: code(o.state),
+      timeMs,
+      state,
+      cancelled: /CANCEL|STORNO/.test(state),
       slotText: isObj(o.deliverySlot) ? str(o.deliverySlot.timeRange, 60) : '',
       totalText: formatKc(total),
+      delivery: deliveries.parseDeliveryWindow(o.deliverySlot, o, timeMs),
+      slotShape: o.deliverySlot === undefined ? 'none' : deliveries.maskShape(o.deliverySlot),
+      slotTextShape: isObj(o.deliverySlot) ? deliveries.maskShape(o.deliverySlot.timeRange) : '',
     };
-  }).filter((o) => o.id && !/CANCEL|STORNO/.test(o.state));
+  }).filter((o) => o.id && (keepCancelled || !o.cancelled));
 }
 
 /**
@@ -416,7 +428,7 @@ function decideSync({ inCart, orders, cart, now }) {
   const earliest = Math.min(...ats);
   const latest = Math.max(...ats);
   const placed = orders
-    .filter((o) => o.timeMs != null && o.timeMs >= earliest - SYNC_TOLERANCE_MS)
+    .filter((o) => !o.cancelled && o.timeMs != null && o.timeMs >= earliest - SYNC_TOLERANCE_MS)
     .sort((a, b) => b.timeMs - a.timeMs)[0];
   if (placed) return { action: 'ordered', order: placed, days };
   if (cart && cart.count === 0 && now - latest >= CLEAR_GRACE_MS) return { action: 'cleared', days };
@@ -600,7 +612,9 @@ async function checkoutLink(call) {
   return rohlikUrl(raw);
 }
 
-const loadOrders = async (call) => parseOrders(await call('fetch_orders', { limit: 5, order_type: 'both', context: CTX.orders }));
+const loadOrders = async (call, opts) => parseOrders(
+  await call('fetch_orders', { limit: 5, order_type: 'both', context: CTX.orders }), opts,
+);
 
 module.exports = {
   SETTABLE_PAYMENTS, PACKAGING, PACKAGING_LABEL, MAX_NOTE, CLEAR_GRACE_MS, SYNC_TOLERANCE_MS,

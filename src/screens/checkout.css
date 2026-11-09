@@ -463,3 +463,16 @@
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   }
 }
+
+/* Delivery window on the "Objednávka přijata" state */
+.done__delivery {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--success-bg);
+  color: var(--success);
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-weight: 700;
+}

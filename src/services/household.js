@@ -5,7 +5,14 @@ import { SEED_IMAGE_BY_ID } from '../lib/builtinImages';
 import seedRecipes from '../data/seedRecipes';
 import { capitalizeFirst } from '../lib/text';
 
-export const DEFAULT_SETTINGS = { remind3d: true, remindDaily: true, remindBoth: true, remindHour: 9 };
+export const DEFAULT_SETTINGS = {
+  remind3d: true,
+  remindDaily: true,
+  remindBoth: true,
+  remindHour: 9,
+  deliveryMorning: true, // missing in the DB = on (server: deliveries.js wants())
+  deliveryHourBefore: true,
+};
 
 export function seedRecipeList() {
   return seedRecipes.map((m) => ({

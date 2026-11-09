@@ -29,6 +29,7 @@
     "rohlikOAuthPending": { ".read": false, ".write": false },
     "rateLimits": { ".read": false, ".write": false },
     "householdIndex": { ".read": false, ".write": false },
+    "deliveryIndex": { ".read": false, ".write": false },
 
     "householdPhotos": {
       "$hid": {
@@ -59,6 +60,7 @@
         "joinCode": { ".write": false },
         "members": { ".write": false },
         "rohlik": { ".write": false },
+        "deliveries": { ".write": false },
         "createdAt": { ".write": false },
 
         "name": {
@@ -189,6 +191,8 @@
           "remindDaily": { ".validate": "newData.isBoolean()" },
           "remindBoth": { ".validate": "newData.isBoolean()" },
           "remindHour": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 23 && newData.val() % 1 === 0" },
+          "deliveryMorning": { ".validate": "newData.isBoolean()" },
+          "deliveryHourBefore": { ".validate": "newData.isBoolean()" },
           "shop": {
             "preferLight": { ".validate": "newData.isBoolean()" },
             "preferBio": { ".validate": "newData.isBoolean()" },

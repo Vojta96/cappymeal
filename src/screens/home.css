@@ -59,6 +59,23 @@
   color: var(--alert-text);
 }
 
+.alert-card--delivery {
+  background: var(--success-bg);
+}
+
+.alert-card--delivery .alert-card__icon {
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--success);
+}
+
+.alert-card--delivery .alert-card__title {
+  color: var(--success);
+}
+
+.alert-card--delivery .alert-card__text {
+  color: var(--ink-2);
+}
+
 .home__days {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

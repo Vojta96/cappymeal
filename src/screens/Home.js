@@ -5,16 +5,29 @@ import { useBanner } from '../components/PushBanner';
 import Thumb from '../components/Thumb';
 import { Icon } from '../components/ui';
 import logo from '../Images/Cappy.png';
-import { cap, dayInfo } from '../lib/dates';
+import { DAY_SHORT, cap, dayInfo, parseKey } from '../lib/dates';
 import { SLOTS, STATUS, mealCount, mealCountLabel } from '../lib/meals';
 import { readStorage, writeStorage } from '../lib/storage';
 import { useIsDesktop } from '../hooks/useMediaQuery';
 import { syncRohlikOrders } from '../services/rohlik';
+import { deliveryWhen, hasPendingDelivery, upcomingDeliveries } from '../lib/deliveries';
 import './home.css';
 
 export default function Home() {
-  const { todayKey, horizon, plan, memberPlan, memberIds, memberName, slotMeals, recipes, alert, statusOf, rohlik } =
-    useHousehold();
+  const {
+    todayKey,
+    horizon,
+    plan,
+    memberPlan,
+    memberIds,
+    memberName,
+    slotMeals,
+    recipes,
+    alert,
+    statusOf,
+    rohlik,
+    deliveries,
+  } = useHousehold();
   const { showBanner } = useBanner();
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
@@ -34,13 +47,17 @@ export default function Home() {
   const alertTitle = alert ? alert.title : '';
   const alertTo = alert && alert.allInCart ? '/cart/checkout' : '/cart';
 
-  // Days waiting in the Rohlík cart: detect a placed order / emptied cart (throttled, best effort).
+  // Days waiting in the Rohlík cart: detect a placed order / emptied cart; a delivery that is not over yet:
+  // refresh its window / state (throttled, best effort).
   const hasInCart = horizon.some((k) => statusOf(k) === 'in_cart');
+  const pendingDelivery = hasPendingDelivery(deliveries);
   const connected = !!(rohlik && rohlik.connected);
   useEffect(() => {
-    if (!connected || !hasInCart) return;
+    if (!connected || (!hasInCart && !pendingDelivery)) return;
     syncRohlikOrders().catch(() => {});
-  }, [connected, hasInCart]);
+  }, [connected, hasInCart, pendingDelivery]);
+  // Re-evaluated on every render (todayKey changes at midnight / on focus), so "dnes" / "zítra" stay right.
+  const delivery = upcomingDeliveries(deliveries)[0] || null;
 
   // In-app banner once per day when there is an alert.
   useEffect(() => {
@@ -76,6 +93,27 @@ export default function Home() {
     </div>
   );
 
+  const deliveryDays = delivery ? [...new Set(delivery.days || [])].sort().map((k) => DAY_SHORT[parseKey(k).getDay()]) : [];
+  const deliveryFor =
+    deliveryDays.length > 1
+      ? `${deliveryDays.slice(0, -1).join(', ')} a ${deliveryDays[deliveryDays.length - 1]}`
+      : deliveryDays[0] || '';
+  const deliveryCard = delivery && (
+    <div className="alert-card alert-card--delivery" data-testid="delivery-card">
+      <div className="alert-card__head">
+        <div className="alert-card__icon">
+          <Icon name="local_shipping" size={isDesktop ? 24 : 21} />
+        </div>
+        <div className="stack" style={{ gap: 3, minWidth: 0 }}>
+          <div className="alert-card__title">Doručení {deliveryWhen(delivery)}</div>
+          <div className="alert-card__text">
+            {deliveryFor ? `Rohlík přiveze nákup na ${deliveryFor}.` : 'Rohlík přiveze objednaný nákup.'}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   const emptyToday = (
     <div className="empty-card" style={{ padding: '28px 24px' }}>
       <span style={{ fontSize: 40 }}>🍽️</span>
@@ -108,6 +146,7 @@ export default function Home() {
         </div>
 
         {alertCard}
+        {deliveryCard}
 
         <div className="home__cols">
           <div className="stack" style={{ gap: 12 }}>
@@ -204,6 +243,7 @@ export default function Home() {
       </div>
 
       {alertCard}
+      {deliveryCard}
 
       {todaySlots.length > 0 ? (
         <div className="list-card" style={{ padding: '6px 16px' }}>

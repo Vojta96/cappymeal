@@ -265,6 +265,32 @@ test('Přehled', () => {
   expect(screen.getByText('Zkontrolovat košík')).toBeInTheDocument();
 });
 
+const at = (key, h, m = 0) => {
+  const [y, mo, d] = key.split('-').map(Number);
+  return new Date(y, mo - 1, d, h, m).getTime();
+};
+
+test('Přehled – doručení z Rohlíku', () => {
+  const tomorrow = horizon[1];
+  renderAt('/', <Home />, '/', {
+    ...household,
+    deliveries: {
+      1001: { start: at(tomorrow, 17), end: at(tomorrow, 18), text: 'x', days: [tomorrow], state: 'PLANNED' },
+      999: { start: at(today, 0, 0), end: at(today, 0, 30), text: 'x', days: [], state: 'DELIVERED' },
+    },
+  });
+  expect(screen.getByTestId('delivery-card')).toHaveTextContent('Doručení zítra 17:00–18:00');
+  expect(screen.getAllByTestId('delivery-card')).toHaveLength(1);
+});
+
+test('Plán – štítek doručení v den doručení', () => {
+  renderAt('/plan', <Plan />, '/plan', {
+    ...household,
+    deliveries: { 1001: { start: at(today, 23, 0), end: at(today, 23, 45), text: 'x', days: [today], state: 'PLANNED' } },
+  });
+  expect(screen.getByTestId('delivery-chip')).toHaveTextContent('Doručení 23:00–23:45');
+});
+
 test('Plán', () => {
   renderAt('/plan', <Plan />);
   expect(screen.getByText('Přidat snídani')).toBeInTheDocument();
@@ -434,7 +460,11 @@ test('Objednávka – košík, doručení, platba, souhrn', async () => {
   expect(screen.getByText('Minimální objednávka je 749 Kč', { exact: false })).toBeInTheDocument();
   expect(screen.getByText('129,80 Kč')).toBeInTheDocument();
   expect(screen.getByText('Vyberte čas doručení')).toBeInTheDocument();
-  expect(screen.getByText('Potvrdit a zaplatit na Rohlíku')).toBeInTheDocument();
+  expect(screen.getByText('Odeslat objednávku v aplikaci Rohlík')).toBeInTheDocument();
+  // paying online (Kartou online selected) → the helper says the payment happens in Rohlík
+  expect(screen.getByTestId('confirm-help')).toHaveTextContent(
+    'Rohlík vyžaduje, aby objednávku odeslal zákazník u nich – otevře se jejich pokladna s vším předvyplněným, stačí ji odeslat. Zaplatíte až tam. Pak se vraťte sem, objednávku poznáme sami.'
+  );
   expect(screen.getByText('Objednávku jsem dokončil(a)')).toBeInTheDocument();
   fireEvent.click(screen.getByText('Hotově při převzetí'));
   await waitFor(() => expect(mockCheckoutCalls.map((c) => c[0])).toContain('setPayment'));
@@ -446,6 +476,24 @@ test('Objednávka – zjištěná objednávka na Rohlíku', async () => {
   renderAt('/cart/checkout', <CartCheckout />, '/cart/checkout', inCartHousehold());
   expect(await screen.findByText('Objednávka přijata ✓')).toBeInTheDocument();
   expect(screen.getByText('doručení 17:00-18:00', { exact: false })).toBeInTheDocument();
+  expect(screen.queryByTestId('done-delivery')).toBeNull();
+  mockSync.next = { result: 'none', days: [] };
+});
+
+test('Objednávka – zjištěná objednávka s časem doručení', async () => {
+  mockSync.next = {
+    result: 'ordered',
+    days: [today],
+    order: {
+      id: 5,
+      slotText: '17:00-18:00',
+      totalText: '812 Kč',
+      delivery: { start: 1, end: 2, text: 'Út 10. 11. 17:00–18:00' },
+    },
+  };
+  renderAt('/cart/checkout', <CartCheckout />, '/cart/checkout', inCartHousehold());
+  expect(await screen.findByTestId('done-delivery')).toHaveTextContent('Doručení Út 10. 11. 17:00–18:00');
+  expect(screen.queryByText('doručení 17:00-18:00', { exact: false })).toBeNull();
   mockSync.next = { result: 'none', days: [] };
 });
 
@@ -545,7 +593,16 @@ test('Upozornění – jen seznam', () => {
 test('Nastavení – zakladatel', async () => {
   renderAt('/settings', <Settings />);
   expect(await screen.findByText('Tento prohlížeč upozornění nepodporuje.', { exact: false })).toBeInTheDocument();
-  ['Domácnost', 'Účet Rohlík', 'Připomínky', 'Účet', 'Čas připomínky', 'Odhlásit se'].forEach((t) =>
+  [
+    'Domácnost',
+    'Účet Rohlík',
+    'Připomínky',
+    'Ráno v den doručení',
+    'Hodinu před doručením',
+    'Účet',
+    'Čas připomínky',
+    'Odhlásit se',
+  ].forEach((t) =>
     expect(screen.getByText(t)).toBeInTheDocument(),
   );
   expect(screen.getByText('ABCD2345')).toBeInTheDocument();

@@ -62,6 +62,20 @@
   gap: 6px;
 }
 
+.plan__delivery {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  background: var(--success-bg);
+  color: var(--success);
+  border-radius: 10px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .plan__warn {
   display: flex;
   align-items: center;

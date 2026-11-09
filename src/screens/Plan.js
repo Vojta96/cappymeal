@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useHousehold } from '../context/HouseholdContext';
+import { deliveryOnDay, deliveryTimeText } from '../lib/deliveries';
 import BottomSheet from '../components/BottomSheet';
 import MealPicker from '../components/MealPicker';
 import Thumb from '../components/Thumb';
@@ -21,7 +22,7 @@ const startFor = (idx, range) => clampStart(idx, range);
 export default function Plan() {
   const {
     todayKey, horizon, plan, memberPlan, fromTemplate, weekTemplate, memberIds, memberName, slotMeals, orders,
-    recipes, statusOf, setMeal, removeMeal, startRepeat, stopRepeat,
+    recipes, statusOf, setMeal, removeMeal, startRepeat, stopRepeat, deliveries,
   } = useHousehold();
   const location = useLocation();
   const navigate = useNavigate();
@@ -226,6 +227,18 @@ export default function Plan() {
     );
   };
 
+  // Rohlík delivery arriving that day (server-written deliveries/{orderId}).
+  const deliveryChip = (key) => {
+    const dv = deliveryOnDay(deliveries, key);
+    if (!dv) return null;
+    return (
+      <span className="plan__delivery" data-testid="delivery-chip">
+        <Icon name="local_shipping" size={15} />
+        Doručení {deliveryTimeText(dv)}
+      </span>
+    );
+  };
+
   if (isDesktop) {
     const cols = `96px repeat(${len}, minmax(124px, 1fr))`;
     return (
@@ -310,6 +323,7 @@ export default function Plan() {
                       </span>
                     )}
                   </div>
+                  {deliveryChip(d.key)}
                 </div>
               );
             })}
@@ -501,6 +515,7 @@ export default function Plan() {
           {SS.label}
         </span>
       </div>
+      {deliveryChip(view.selDay)}
 
       {changedAfterOrder && (
         <div className="plan__warn">

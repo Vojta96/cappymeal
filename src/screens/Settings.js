@@ -16,6 +16,8 @@ const REMINDERS = [
   ['remind3d', '3 dny předem', 'Když na den za 3 dny není objednáno'],
   ['remindDaily', 'Každý další den', 'Připomínat denně, dokud neobjednáte'],
   ['remindBoth', 'Oběma v domácnosti', 'Upozornění dostanete vy i partner(ka)'],
+  ['deliveryMorning', 'Ráno v den doručení', 'V 7:00 připomeneme, kdy dnes Rohlík přiveze nákup'],
+  ['deliveryHourBefore', 'Hodinu před doručením', 'Upozornění, že nákup z Rohlíku brzy dorazí'],
 ];
 
 const SHOP_TOGGLES = [

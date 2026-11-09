@@ -69,6 +69,9 @@ test.beforeEach(async () => {
           photos: { r1: 'data:image/jpeg;base64,AAAA' },
           orders: { [today]: { status: 'in_cart', at: 1, by: 'alice' } },
           settings: { remind3d: true, remindHour: 9 },
+          deliveries: {
+            1001: { start: 1, end: 2, text: 'Út 10. 11. 17:00–18:00', days: [today], state: 'PLANNED', updatedAt: 1 },
+          },
         },
         [OTHER]: {
           name: 'Jiní',
@@ -104,7 +107,7 @@ test('joinCodes: single key read, no client writes, no listing', async () => {
 
 test('admin-only trees', async () => {
   for (const p of [
-    `rohlikCredentials/${HID}`, 'rateLimits', 'householdIndex',
+    `rohlikCredentials/${HID}`, 'rateLimits', 'householdIndex', 'deliveryIndex', `deliveryIndex/${HID}`,
     'rohlikOAuthClient', `rohlikOAuthPending/${HID}`, 'rohlikOAuthPending',
   ]) {
     // eslint-disable-next-line no-await-in-loop
@@ -343,6 +346,24 @@ test('pantry, settings, activity, pushTokens, regulars', async () => {
   await assertFails(set(ref(bob, `households/${HID}/regulars/k2`), { name: 'Káva', amount: 'x'.repeat(41) }));
   await assertFails(set(ref(bob, `households/${HID}/regulars/k2`), { name: 'Káva', auto: 'yes' }));
   await assertFails(set(ref(db('eve'), `households/${HID}/regulars/k2`), { name: 'Káva' }));
+});
+
+test('deliveries: members read, server-only writes', async () => {
+  await assertSucceeds(get(ref(db('bob'), `households/${HID}/deliveries`)));
+  await assertFails(get(ref(db('eve'), `households/${HID}/deliveries`)));
+  await assertFails(set(ref(db('alice'), `households/${HID}/deliveries/1002`), { start: 1, end: 2 }));
+  await assertFails(set(ref(db('alice'), `households/${HID}/deliveries/1001/notified/morning`), true));
+  await assertFails(remove(ref(db('alice'), `households/${HID}/deliveries/1001`)));
+  await assertFails(set(ref(db('alice'), `households/${HID}/deliveries`), null));
+});
+
+test('settings: delivery notification toggles are booleans', async () => {
+  const bob = db('bob');
+  await assertSucceeds(update(ref(bob, `households/${HID}/settings`), { deliveryMorning: false, deliveryHourBefore: true }));
+  await assertSucceeds(set(ref(bob, `households/${HID}/settings/deliveryMorning`), null));
+  await assertFails(set(ref(bob, `households/${HID}/settings/deliveryMorning`), 'no'));
+  await assertFails(set(ref(bob, `households/${HID}/settings/deliveryHourBefore`), 1));
+  await assertFails(set(ref(db('eve'), `households/${HID}/settings/deliveryHourBefore`), false));
 });
 
 test('settings/shop validation', async () => {

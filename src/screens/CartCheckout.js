@@ -102,7 +102,7 @@ function CartRow({ item, qty, busy, before, onQty, onRemove }) {
 }
 
 export default function CartCheckout() {
-  const { hid, horizon, todayKey, statusOf, setOrderStatus, clearOrder, rohlik, settings } = useHousehold();
+  const { hid, horizon, todayKey, statusOf, setOrderStatus, clearOrder, rohlik, settings, deliveries } = useHousehold();
   const location = useLocation();
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
@@ -505,6 +505,10 @@ export default function CartCheckout() {
 
   // ---------- simple states ----------
   if (phase === 'ordered') {
+    // Delivery window: from the sync result, else from the stored delivery (server parsed it), else nothing.
+    const stored = order && order.id != null && deliveries ? deliveries[String(order.id)] : null;
+    const deliveryText = (order && order.delivery && order.delivery.text) || (stored && stored.text) || '';
+    const slotText = deliveryText ? '' : order && order.slotText;
     return (
       <div className="screen screen--fill done">
         <div className="done__icon">
@@ -512,9 +516,15 @@ export default function CartCheckout() {
         </div>
         <h1 className="done__title">Objednávka přijata ✓</h1>
         <div className="done__text">
-          Rohlík objednávku potvrdil{order && order.slotText ? ` – doručení ${order.slotText}` : ''}
+          Rohlík objednávku potvrdil{slotText ? ` – doručení ${slotText}` : ''}
           {order && order.totalText ? ` (${order.totalText})` : ''}. Připomínky pro tyto dny jsme vypnuli.
         </div>
+        {deliveryText && (
+          <div className="done__delivery" data-testid="done-delivery">
+            <Icon name="local_shipping" size={20} />
+            Doručení {deliveryText}
+          </div>
+        )}
         <div className="done__actions">
           <button type="button" className="btn" onClick={() => navigate('/', { replace: true })}>
             Zpět na přehled
@@ -880,7 +890,7 @@ export default function CartCheckout() {
       disabled={loading || cartEmpty || !!busy}
     >
       <Icon name="open_in_new" />
-      {payOnDelivery ? 'Potvrdit objednávku na Rohlíku' : 'Potvrdit a zaplatit na Rohlíku'}
+      Odeslat objednávku v aplikaci Rohlík
     </button>
   );
 
@@ -954,9 +964,9 @@ export default function CartCheckout() {
       ) : (
         isDesktop && confirmBtn
       )}
-      <div className="co-hint co-hint--center">
-        Objednávku podle podmínek Rohlíku potvrzujete a platíte přímo u nich. Až ji odešlete, poznáme to tu sami a
-        připomínky vypneme.
+      <div className="co-hint co-hint--center" data-testid="confirm-help">
+        Rohlík vyžaduje, aby objednávku odeslal zákazník u nich – otevře se jejich pokladna s vším předvyplněným, stačí
+        ji odeslat.{payOnDelivery ? '' : ' Zaplatíte až tam.'} Pak se vraťte sem, objednávku poznáme sami.
       </div>
       {manualLinks}
     </section>
