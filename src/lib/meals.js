@@ -8,6 +8,7 @@ export const SLOTS = [
   { key: 'lunch', label: 'Oběd', acc: 'oběd' },
   { key: 'afternoon_snack', label: 'Odp. svačina', acc: 'odpolední svačinu' },
   { key: 'dinner', label: 'Večeře', acc: 'večeři' },
+  { key: 'treat', label: 'Neřesti', acc: 'neřest' },
 ];
 
 export const SLOT_BY_KEY = Object.fromEntries(SLOTS.map((s) => [s.key, s]));

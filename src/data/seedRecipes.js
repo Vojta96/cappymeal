@@ -372,7 +372,7 @@ const MealsList = [
   r('Mozzarellová tortilla z vajec', '🧀', 'snack', 'Smažení', [
     'Vejce|2 ks', 'Mozzarella|1 ks', 'Sůl, koření|dle chuti', 'Polníček|1 hrst', 'Zelenina|dle chuti',
   ], 'Rozmixujeme 2 vejce s 1 mozzarellou a kořením. Dáme na plech nebo na pánev a uděláme jako tortillu (nebo pizzu). Hodí se k tomu polníček a zelenina.'),
-  r('Cibulová placka', '🧅', 'snack', 'Pečení', [
+  r('Cibulová placka', '🧅', ['treat', 'snack'], 'Pečení', [
     'Cibule|2 ks', 'Eidam strouhaný|80 g', 'Koření|dle chuti',
   ], 'Cibuli nakrájíme na kolečka a poskládáme na plech, okořeníme a posypeme sýrem. Zapečeme do placky.'),
   r('Placka na plech (tortilla)', '🥕', 'snack', 'Pečení', [
@@ -531,6 +531,34 @@ const MealsList = [
   r('Mrkvovo-okurkový nápoj', '🥕', 'afternoon_snack', 'Mixování', [
     'Mrkev|2 ks', 'Okurka|½ ks', 'Citron|½ ks', 'Voda|200 ml',
   ], 'Mrkev, okurku, citron a vodu rozmixujeme. Pije se kdykoliv přes den nebo ráno.'),
+  // ===== NEŘESTI (večer k televizi) =====
+  r('Nachos se zapečeným sýrem', '🧀', 'treat', 'Pečení', [
+    'Tortilla chipsy|200 g', 'Čedar|150 g', 'Salsa|1 sklenice', 'Zakysaná smetana|1 ks', 'Jalapeños|4 lžíce',
+  ], 'Chipsy rozložíme na plech, posypeme nastrouhaným čedarem a jalapeños a zapečeme při 200 °C asi 5 minut, než se sýr rozpustí. Podáváme se salsou a zakysanou smetanou.'),
+  r('Domácí popcorn s máslem', '🍿', 'treat', 'Smažení', [
+    'Kukuřice na popcorn|100 g', 'Máslo|30 g', 'Olej|1 lžíce', 'Sůl|dle chuti',
+  ], 'V hrnci s pokličkou rozehřejeme olej, nasypeme kukuřici a za občasného protřepání necháme vypraskat. Přelijeme rozpuštěným máslem a osolíme.'),
+  r('Pečené bramborové chipsy', '🥔', 'treat', 'Pečení', [
+    'Brambory|500 g', 'Olej|2 lžíce', 'Sladká paprika|1 lžička', 'Sůl|dle chuti',
+  ], 'Brambory nakrájíme na co nejtenčí plátky, osušíme, promícháme s olejem, paprikou a solí. Rozložíme na plech s pečicím papírem v jedné vrstvě a pečeme při 200 °C asi 20 minut dozlatova, v půlce otočíme.'),
+  r('Pizza toasty', '🍕', 'treat', 'Pečení', [
+    'Toustový chléb|6 plátků', 'Kečup|4 lžíce', 'Šunka|100 g', 'Eidam|100 g', 'Oregano|dle chuti',
+  ], 'Plátky chleba potřeme kečupem, obložíme šunkou a posypeme nastrouhaným eidamem a oreganem. Zapečeme při 200 °C asi 8 minut, než se sýr rozpustí.'),
+  r('Sýrové tyčinky z listového těsta', '🥨', 'treat', 'Pečení', [
+    'Listové těsto|1 balení', 'Parmazán|60 g', 'Vejce|1 ks', 'Kmín|1 lžička',
+  ], 'Těsto rozválíme, potřeme rozšlehaným vejcem, posypeme nastrouhaným parmazánem a kmínem a nakrájíme na proužky. Proužky zatočíme a pečeme při 200 °C asi 12 minut dozlatova.'),
+  r('Guacamole s tortilla chipsy', '🥑', 'treat', 'Bez vaření', [
+    'Avokádo|2 ks', 'Limetka|1 ks', 'Cherry rajčata|6 ks', 'Červená cibule|½ ks', 'Tortilla chipsy|150 g', 'Sůl|dle chuti',
+  ], 'Avokádo rozmačkáme vidličkou s limetkovou šťávou a solí, vmícháme nadrobno nakrájená rajčata a cibuli. Podáváme s tortilla chipsy.'),
+  r('Topinky s česnekem a sýrem', '🍞', 'treat', 'Smažení', [
+    'Chléb|4 plátky', 'Česnek|3 stroužky', 'Eidam|80 g', 'Olej|3 lžíce',
+  ], 'Chléb osmažíme na oleji dozlatova z obou stran, potřeme rozkrojeným česnekem a posypeme nastrouhaným sýrem.'),
+  r('Jahody v čokoládě', '🍓', 'treat', 'Bez vaření', [
+    'Jahody|250 g', 'Hořká čokoláda|100 g',
+  ], 'Čokoládu rozpustíme ve vodní lázni, jahody namáčíme do čokolády a necháme ztuhnout na pečicím papíře v lednici.'),
+  r('Hrnková buchta z mikrovlnky', '🍫', 'treat', 'Mikrovlnka', [
+    'Mouka hladká|4 lžíce', 'Cukr|2 lžíce', 'Kakao|1 lžíce', 'Vejce|1 ks', 'Mléko|3 lžíce', 'Olej|2 lžíce', 'Prášek do pečiva|¼ lžičky',
+  ], 'Všechny suroviny důkladně promícháme přímo ve velkém hrnku a pečeme v mikrovlnce na plný výkon asi 90 sekund. Podáváme teplé, třeba s kopečkem zmrzliny.'),
 ];
 
 export default MealsList;

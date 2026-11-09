@@ -71,9 +71,9 @@
             ".write": "auth != null && root.child('households').child($hid).child('members').child(auth.uid).exists()",
             ".validate": "newData.hasChildren(['name', 'type'])",
             "name": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 80" },
-            "type": { ".validate": "newData.isString() && (newData.val() === 'breakfast' || newData.val() === 'snack' || newData.val() === 'lunch' || newData.val() === 'afternoon_snack' || newData.val() === 'dinner')" },
+            "type": { ".validate": "newData.isString() && (newData.val() === 'breakfast' || newData.val() === 'snack' || newData.val() === 'lunch' || newData.val() === 'afternoon_snack' || newData.val() === 'dinner' || newData.val() === 'treat')" },
             "types": {
-              "$slot": { ".validate": "($slot === 'breakfast' || $slot === 'snack' || $slot === 'lunch' || $slot === 'afternoon_snack' || $slot === 'dinner') && newData.val() === true" }
+              "$slot": { ".validate": "($slot === 'breakfast' || $slot === 'snack' || $slot === 'lunch' || $slot === 'afternoon_snack' || $slot === 'dinner' || $slot === 'treat') && newData.val() === true" }
             },
             "emoji": { ".validate": "newData.isString() && newData.val().length <= 16" },
             "preparation": { ".validate": "newData.isString() && newData.val().length <= 80" },
@@ -105,7 +105,7 @@
             ".write": "auth != null && root.child('households').child($hid).child('members').child(auth.uid).exists()",
             ".validate": "$date.matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)",
             "$slot": {
-              ".validate": "($slot === 'breakfast' || $slot === 'snack' || $slot === 'lunch' || $slot === 'afternoon_snack' || $slot === 'dinner') && newData.isString() && newData.val().length <= 40"
+              ".validate": "($slot === 'breakfast' || $slot === 'snack' || $slot === 'lunch' || $slot === 'afternoon_snack' || $slot === 'dinner' || $slot === 'treat') && newData.isString() && newData.val().length <= 40"
             }
           }
         },
@@ -115,7 +115,7 @@
             ".write": "auth != null && root.child('households').child($hid).child('members').child(auth.uid).exists()",
             ".validate": "$date.matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)",
             "$slot": {
-              ".validate": "$slot === 'breakfast' || $slot === 'snack' || $slot === 'lunch' || $slot === 'afternoon_snack' || $slot === 'dinner'",
+              ".validate": "$slot === 'breakfast' || $slot === 'snack' || $slot === 'lunch' || $slot === 'afternoon_snack' || $slot === 'dinner' || $slot === 'treat'",
               "$uid": {
                 ".validate": "root.child('households').child($hid).child('members').child($uid).exists() && newData.isString() && newData.val().length >= 1 && newData.val().length <= 40"
               }
@@ -133,12 +133,12 @@
               ".validate": "$day.matches(/^d[0-6]$/)",
               "plan": {
                 "$slot": {
-                  ".validate": "($slot === 'breakfast' || $slot === 'snack' || $slot === 'lunch' || $slot === 'afternoon_snack' || $slot === 'dinner') && newData.isString() && newData.val().length >= 1 && newData.val().length <= 40"
+                  ".validate": "($slot === 'breakfast' || $slot === 'snack' || $slot === 'lunch' || $slot === 'afternoon_snack' || $slot === 'dinner' || $slot === 'treat') && newData.isString() && newData.val().length >= 1 && newData.val().length <= 40"
                 }
               },
               "members": {
                 "$slot": {
-                  ".validate": "$slot === 'breakfast' || $slot === 'snack' || $slot === 'lunch' || $slot === 'afternoon_snack' || $slot === 'dinner'",
+                  ".validate": "$slot === 'breakfast' || $slot === 'snack' || $slot === 'lunch' || $slot === 'afternoon_snack' || $slot === 'dinner' || $slot === 'treat'",
                   "$uid": {
                     ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 40"
                   }

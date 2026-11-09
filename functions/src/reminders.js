@@ -38,7 +38,7 @@ function hasPlannedMeals(dayPlan) {
   return !!dayPlan && Object.values(dayPlan).some((v) => v && v !== '-');
 }
 
-const SLOTS = ['breakfast', 'snack', 'lunch', 'afternoon_snack', 'dinner'];
+const SLOTS = ['breakfast', 'snack', 'lunch', 'afternoon_snack', 'dinner', 'treat'];
 
 /**
  * Does the date have any meal in the EFFECTIVE plan (shared plan + weekly template + per-member overrides)?

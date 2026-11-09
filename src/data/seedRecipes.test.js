@@ -6,14 +6,15 @@ jest.mock('../services/functions', () => ({ callFunction: () => Promise.resolve(
 describe('seed recipes', () => {
   test('expected counts per type, unique ids and names', () => {
     const count = (t) => seedRecipes.filter((r) => r.type === t).length;
-    expect(seedRecipes).toHaveLength(177);
+    expect(seedRecipes).toHaveLength(186);
     expect(count('breakfast')).toBe(30);
-    expect(count('snack')).toBe(39);
+    expect(count('snack')).toBe(38);
     expect(count('lunch')).toBe(70);
     expect(count('afternoon_snack')).toBe(16);
     expect(count('dinner')).toBe(22);
-    expect(new Set(seedRecipes.map((r) => r.id)).size).toBe(177);
-    expect(new Set(seedRecipes.map((r) => r.name)).size).toBe(177);
+    expect(count('treat')).toBe(10);
+    expect(new Set(seedRecipes.map((r) => r.id)).size).toBe(186);
+    expect(new Set(seedRecipes.map((r) => r.name)).size).toBe(186);
   });
 
   test('no placeholders, every recipe has ingredients, instructions and a preparation', () => {

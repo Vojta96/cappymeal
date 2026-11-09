@@ -4,7 +4,7 @@
 const LOGIN_DOMAIN = 'users.cappymeal-go.firebaseapp.com';
 const LEGACY_DOMAIN = 'cappymeal.app';
 
-const SLOTS = ['breakfast', 'snack', 'lunch', 'afternoon_snack', 'dinner'];
+const SLOTS = ['breakfast', 'snack', 'lunch', 'afternoon_snack', 'dinner', 'treat'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const NICK_RE = /^[a-z0-9áčďéěíňóřšťúůýž._-]{3,24}$/;
 const JOIN_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
