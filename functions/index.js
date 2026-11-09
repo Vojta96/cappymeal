@@ -406,12 +406,21 @@ async function getAccessToken(hid) {
     const now = Date.now();
     // Short lock so concurrent requests do not spend the same (rotating) refresh token twice.
     // eslint-disable-next-line no-await-in-loop
+    // NB: RTDB runs the update function first with the locally cached value, which is null on a fresh
+    // instance. Returning undefined there aborts the transaction for good (that bug made every refresh
+    // spin 20 × 750 ms and fail with 503). Return null to let the server retry with the real value.
     const lock = await credRef.transaction((c) => {
-      if (!c) return undefined;
+      if (c === null) return null;
       if (c.refreshLock && now - c.refreshLock < 20000) return undefined;
       return { ...c, refreshLock: now };
     });
-    if (!lock.committed) {
+    const won = lock.committed && lock.snapshot.exists() && lock.snapshot.child('refreshLock').val() === now;
+    if (!lock.snapshot.exists()) {
+      // eslint-disable-next-line no-await-in-loop
+      await markExpired(hid);
+      throw expiredError();
+    }
+    if (!won) {
       // eslint-disable-next-line no-await-in-loop
       await sleep(750);
       continue; // eslint-disable-line no-continue
