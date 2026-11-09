@@ -129,10 +129,12 @@ export const formatKc = (n) => `${Math.round(n).toLocaleString('cs-CZ')} Kč`;
 
 /**
  * Alert for the next 3 days (tomorrow .. +3) that have meals but are not ordered.
+ * shift = 1 (delivery the day before cooking, settings/delivery/lead): the deadline is one day earlier,
+ * so the window is tomorrow .. +4 (same rule as functions/src/reminders.js).
  * @param statusOf (key) => status
  */
-export function buildAlert(todayKey, horizon, statusOf) {
-  const next = horizon.slice(1, 4).map((k) => dayInfo(k, todayKey));
+export function buildAlert(todayKey, horizon, statusOf, shift = 0) {
+  const next = horizon.slice(1, 4 + (shift ? 1 : 0)).map((k) => dayInfo(k, todayKey));
   const days = next.filter((d) => {
     const st = statusOf(d.key);
     return st === 'pending' || st === 'in_cart';
@@ -146,7 +148,9 @@ export function buildAlert(todayKey, horizon, statusOf) {
       ? `${cap(f.dl)} ${f.num}. ${f.m}. ${allInCart ? 'čeká v košíku' : 'ještě není objednané'}`
       : `${cap(f.dl)}–${last.dl} ${allInCart ? 'čeká v košíku' : 'zatím bez objednávky'}`;
   const text = allInCart
-    ? 'Košík na Rohlíku je připravený. Dokončete objednávku v aplikaci Rohlík a pak ji tu označte jako hotovou.'
-    : `Jídlo by mělo dorazit nejpozději ${f.index > 1 ? 'den předem' : 'dnes'}. Připomeneme se 3 dny dopředu a pak každý den, dokud neobjednáte.`;
+    ? 'Košík na Rohlíku je připravený. Zvolte doručení a potvrďte objednávku na Rohlíku – dokončení poznáme sami.'
+    : shift
+      ? `Jídlo má dorazit den před vařením${f.index > 1 ? '' : ' – tedy už dnes'}. Připomeneme se 4 dny dopředu a pak každý den, dokud neobjednáte.`
+      : `Jídlo by mělo dorazit nejpozději ${f.index > 1 ? 'den předem' : 'dnes'}. Připomeneme se 3 dny dopředu a pak každý den, dokud neobjednáte.`;
   return { days: days.map((d) => d.key), title, text, allInCart };
 }

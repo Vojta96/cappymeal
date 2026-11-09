@@ -375,7 +375,6 @@ function simplifyQuery(name) {
 // Tool lists are cached per MCP client (= per request and household), never shared
 // between households.
 const toolCache = new WeakMap();
-const probed = new WeakSet(); // one product-details probe per MCP session (diagnostics)
 
 const MCP_URL = 'https://mcp.rohlik.cz/mcp';
 const TIMEOUT_MS = 30000;
@@ -400,6 +399,68 @@ async function listTools(client, { refresh = false } = {}) {
   return tools;
 }
 
+// ---------- allowlist ----------
+
+/**
+ * The ONLY Rohlík MCP tools CappyMeal may call (search, cart, checkout preparation, read orders).
+ * Never: submitting/cancelling orders, clear_cart (the cart may hold other things), claims, credits,
+ * shopping lists, scheduled tasks, … Enforced in callAllowed – every MCP tool call goes through it.
+ */
+const ALLOWED_TOOLS = new Set([
+  'batch_search_products', 'add_items_to_cart', 'get_cart', 'update_cart_item', 'remove_cart_item',
+  'get_checkout', 'get_user_addresses', 'select_delivery_address_checkout', 'get_timeslots_checkout',
+  'change_timeslot_checkout', 'reserve_timeslot', 'unreserve_timeslot', 'update_payment_method_checkout',
+  'change_checkout_packaging', 'toggle_delivery_note_checkout', 'update_courier_instructions_checkout',
+  'get_checkout_link', 'fetch_orders',
+]);
+
+const DEFAULT_CONTEXT = 'Nákup surovin pro naplánovaná jídla v aplikaci CappyMeal.';
+
+class ToolNotAllowedError extends Error {
+  constructor(name) {
+    super(`Rohlík MCP tool not allowed: ${String(name).slice(0, 60)}`);
+    this.code = 'TOOL_NOT_ALLOWED';
+  }
+}
+
+/** A Rohlík tool answered with isError (message never contains the tool's text – it may hold personal data). */
+class ToolError extends Error {
+  constructor(name, detail) {
+    super(`Rohlík tool ${name} failed`);
+    this.code = 'ROHLIK_TOOL_ERROR';
+    this.tool = name;
+    this.detail = detail || ''; // safe, masked summary for logs
+  }
+}
+
+/** Calls an allowlisted tool (adds the required `context` sentence). Throws ToolNotAllowedError otherwise. */
+async function callAllowed(client, name, args = {}) {
+  if (!ALLOWED_TOOLS.has(name)) throw new ToolNotAllowedError(name);
+  const a = { ...(args || {}) };
+  if (!a.context) a.context = DEFAULT_CONTEXT;
+  return client.callTool({ name, arguments: a }, undefined, { timeout: TIMEOUT_MS });
+}
+
+/** Safe log summary of a tool error text: pydantic validation errors with input values masked, else only the length. */
+function errorSummary(text) {
+  const t = String(text || '');
+  if (/validation error/i.test(t)) return t.replace(/input_value=[\s\S]*?(?=, input_type=|$)/g, 'input_value=…').replace(/\s+/g, ' ').slice(0, 200);
+  return `text(${t.length})`;
+}
+
+/** Calls an allowlisted tool and returns its JSON payload (content[0].text / structuredContent). */
+async function callJson(client, name, args) {
+  const res = await callAllowed(client, name, args);
+  const txt = resultText(res);
+  if (res && res.isError) throw new ToolError(name, errorSummary(txt));
+  if (res && res.structuredContent && typeof res.structuredContent === 'object') return res.structuredContent;
+  try {
+    return JSON.parse(txt);
+  } catch (e) {
+    return { text: txt };
+  }
+}
+
 /**
  * Runs one product search. Returns normalised products (up to SEARCH_LIMIT, in Rohlík's order).
  * onRaw(rawFirstProduct) is called with the first raw result object (for key logging).
@@ -409,7 +470,7 @@ async function searchProducts(client, query, { onRaw, onDiag } = {}) {
   const tool = pickSearchTool(tools);
   if (!tool) throw new Error('Rohlík MCP: nenalezen nástroj pro vyhledávání produktů.');
   const args = buildSearchArgs(tool, query);
-  const res = await client.callTool({ name: tool.name, arguments: args });
+  const res = await callAllowed(client, tool.name, args);
   if (onDiag) {
     // Diagnostics (public catalogue data only, never tokens): which tool, which args, what came back.
     const addTool = pickAddTool(tools);
@@ -424,23 +485,6 @@ async function searchProducts(client, query, { onRaw, onDiag } = {}) {
       structured: res.structuredContent ? describeKeys(res.structuredContent) : null,
       text: resultText(res).slice(0, 800),
     });
-    // One-off probe: does get_product_details return images? (diagnostics only)
-    const det = tools.find((t) => t.name === 'get_product_details');
-    const first = rawProducts(res)[0];
-    if (det && first && first.productId != null && !probed.has(client)) {
-      probed.add(client);
-      const dp = props(det);
-      const idK = findProp(det, ['productId', 'product_id', 'productIds', 'product_ids', 'ids', 'id']) || 'productId';
-      const idV = dp[idK] && dp[idK].type === 'array' ? [first.productId] : first.productId;
-      const dArgs = { [idK]: idV };
-      if (dp.context) dArgs.context = 'Zobrazení obrázku produktu v nákupním seznamu.';
-      try {
-        const dr = await client.callTool({ name: det.name, arguments: dArgs });
-        onDiag({ detailsSchema: JSON.stringify(det.inputSchema || {}).slice(0, 1200), detailsArgs: dArgs, isError: !!dr.isError, text: resultText(dr).slice(0, 3000) });
-      } catch (e) {
-        onDiag({ detailsSchema: JSON.stringify(det.inputSchema || {}).slice(0, 1200), detailsError: (e && e.message) || '' });
-      }
-    }
   }
   if (res.isError) return [];
   if (onRaw) {
@@ -462,45 +506,6 @@ function shapeOf(v, depth = 0) {
   return v === null ? 'null' : typeof v;
 }
 
-const INSPECT_TOOLS = [
-  'get_checkout', 'get_timeslots_checkout', 'get_user_addresses', 'fetch_orders', 'get_checkout_link', 'get_cart',
-];
-const SCHEMA_ONLY_TOOLS = [
-  'select_delivery_address_checkout', 'change_timeslot_checkout', 'reserve_timeslot', 'unreserve_timeslot',
-  'update_payment_method_checkout', 'change_checkout_packaging', 'toggle_delivery_note_checkout',
-  'update_courier_instructions_checkout', 'set_checkout_as_suborder', 'remove_cart_item', 'clear_cart', 'update_cart_item',
-];
-
-/**
- * Diagnostics for building the checkout flow: logs input schemas of checkout tools and the masked
- * structure (keys + types, never values) of read-only tool outputs. Never calls a mutating tool.
- */
-async function inspectCheckoutTools(client, log) {
-  const tools = await listTools(client);
-  for (const name of SCHEMA_ONLY_TOOLS) {
-    const t = tools.find((x) => x.name === name);
-    if (t) log({ tool: name, schema: t.inputSchema || {}, description: String(t.description || '').slice(0, 600) });
-  }
-  for (const name of INSPECT_TOOLS) {
-    const t = tools.find((x) => x.name === name);
-    if (!t) continue;
-    const args = props(t).context ? { context: 'Zobrazení pokladny a termínů doručení v aplikaci CappyMeal.' } : {};
-    try {
-      // eslint-disable-next-line no-await-in-loop
-      const r = await client.callTool({ name, arguments: args }, undefined, { timeout: TIMEOUT_MS });
-      let shape = null;
-      const txt = resultText(r);
-      try { shape = shapeOf(JSON.parse(txt)); } catch (e) { shape = `text(${txt.length})`; }
-      log({
-        tool: name, schema: t.inputSchema || {}, description: String(t.description || '').slice(0, 600),
-        isError: !!r.isError, errorText: r.isError ? txt.slice(0, 400) : undefined, shape,
-      });
-    } catch (e) {
-      log({ tool: name, schema: t.inputSchema || {}, callError: (e && e.message) || '' });
-    }
-  }
-}
-
 async function addToCart(client, products) {
   const tools = await listTools(client);
   const tool = pickAddTool(tools);
@@ -512,7 +517,8 @@ async function addToCart(client, products) {
       const callArgs = props(tool).context
         ? { ...call.args, context: 'Vložení surovin pro naplánovaná jídla do nákupního košíku.' }
         : call.args;
-      const res = await client.callTool({ name: tool.name, arguments: callArgs });
+      // eslint-disable-next-line no-await-in-loop
+      const res = await callAllowed(client, tool.name, callArgs);
       if (res.isError) {
         const txt = resultText(res).slice(0, 200) || 'Chyba';
         call.products.forEach((p) => failed.push({ productId: p.productId, error: txt }));
@@ -530,5 +536,5 @@ async function addToCart(client, products) {
 module.exports = {
   pickSearchTool, pickAddTool, buildSearchArgs, buildAddCalls, parseProducts,
   normaliseProduct, rawProducts, describeKeys, simplifyQuery, MAX_VARIANTS, SEARCH_LIMIT, connect, listTools, searchProducts, addToCart,
-  fetchProductImages, inspectCheckoutTools, shapeOf,
+  fetchProductImages, shapeOf, ALLOWED_TOOLS, callAllowed, callJson, errorSummary, ToolError, ToolNotAllowedError,
 };

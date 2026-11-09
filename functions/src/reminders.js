@@ -38,16 +38,24 @@ function hasPlannedMeals(dayPlan) {
   return !!dayPlan && Object.values(dayPlan).some(Boolean);
 }
 
+/** 1 when the household wants deliveries the day before cooking (settings/delivery/lead), else 0. */
+function leadShift(settings) {
+  return settings && settings.delivery && settings.delivery.lead === 'dayBefore' ? 1 : 0;
+}
+
 /**
  * Dates (ascending) that need a reminder today.
  * Date D (planned, not ordered) is reminded on D-3 (remind3d) and D-2, D-1 (remindDaily).
  * => today T notifies D = T+3 (if remind3d), T+2 / T+1 (if remindDaily).
+ * With delivery lead 'dayBefore' the deadline is one day earlier: D-4 (remind3d) and D-3, D-2, D-1 (daily –
+ * D-1 is already late but delivery that day is still possible).
  */
 function computeReminderDates(today, plan, orders, settings = {}) {
   const s = { remind3d: true, remindDaily: true, ...settings };
+  const shift = leadShift(s);
   const offsets = [];
-  if (s.remind3d) offsets.push(3);
-  if (s.remindDaily) offsets.push(1, 2);
+  if (s.remind3d) offsets.push(3 + shift);
+  if (s.remindDaily) for (let i = 1; i <= 2 + shift; i++) offsets.push(i);
   const out = [];
   for (const off of offsets) {
     const d = addDays(today, off);
@@ -70,5 +78,5 @@ function buildMessage(dates) {
 
 module.exports = {
   TZ, pragueDateString, pragueHour, addDays, weekday, formatDay,
-  computeReminderDates, buildMessage,
+  computeReminderDates, buildMessage, leadShift,
 };

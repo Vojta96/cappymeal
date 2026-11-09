@@ -4,13 +4,13 @@ const a = require('../src/rohlikAdapter');
 
 const tools = [
   { name: 'get_order_history', description: 'orders', inputSchema: { properties: {} } },
-  { name: 'search_products', description: 'Search products', inputSchema: { properties: { keyword: { type: 'string' }, limit: { type: 'number' } } } },
-  { name: 'add_to_cart', description: 'Add to cart', inputSchema: { properties: { productId: { type: 'integer' }, quantity: { type: 'integer' } } } },
+  { name: 'batch_search_products', description: 'Search products', inputSchema: { properties: { keyword: { type: 'string' }, limit: { type: 'number' } } } },
+  { name: 'add_items_to_cart', description: 'Add to cart', inputSchema: { properties: { productId: { type: 'integer' }, quantity: { type: 'integer' } } } },
 ];
 
 test('tool picking', () => {
-  assert.strictEqual(a.pickSearchTool(tools).name, 'search_products');
-  assert.strictEqual(a.pickAddTool(tools).name, 'add_to_cart');
+  assert.strictEqual(a.pickSearchTool(tools).name, 'batch_search_products');
+  assert.strictEqual(a.pickAddTool(tools).name, 'add_items_to_cart');
 });
 test('search args mapped to schema', () => {
   assert.deepStrictEqual(a.buildSearchArgs(tools[1], 'mléko'), { keyword: 'mléko', limit: 15 });
@@ -64,7 +64,8 @@ test('search: deduped by productId, server order, raw first object reported', as
   };
   const out = await a.searchProducts(client, 'mléko', { onRaw: (o) => { raw = o; } });
   assert.deepStrictEqual(out.map((p) => p.productId), ['1', '2', '3', '4', '5', '6', '7']);
-  assert.deepStrictEqual(args, { keyword: 'mléko', limit: 15 });
+  assert.deepStrictEqual(args, { keyword: 'mléko', limit: 15, context: args.context });
+  assert.ok(args.context);
   assert.strictEqual(a.describeKeys(raw), 'productId,name,price');
 });
 

@@ -13,7 +13,7 @@ import Recipes from './screens/Recipes';
 import RecipeDetail from './screens/RecipeDetail';
 import RecipeEdit from './screens/RecipeEdit';
 import Cart from './screens/Cart';
-import CartDone from './screens/CartDone';
+import CartCheckout from './screens/CartCheckout';
 import Notifications from './screens/Notifications';
 import Settings from './screens/Settings';
 
@@ -52,7 +52,9 @@ function Gate() {
             <Route path="/recipes/:id" element={<RecipeDetail />} />
             <Route path="/recipes/:id/edit" element={<RecipeEdit />} />
             <Route path="/cart" element={<Cart />} />
-            <Route path="/cart/done" element={<CartDone />} />
+            <Route path="/cart/checkout" element={<CartCheckout />} />
+            {/* old links (notifications, bookmarks) */}
+            <Route path="/cart/done" element={<CartCheckout />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/settings" element={<Settings />} />
           </Route>

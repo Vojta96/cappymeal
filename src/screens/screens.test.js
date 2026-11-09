@@ -1,6 +1,6 @@
 // Smoke tests: every screen renders with a fake household (no real Firebase).
 import React from 'react';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { HouseholdContext } from '../context/HouseholdContext';
@@ -13,7 +13,7 @@ import Recipes from './Recipes';
 import RecipeDetail from './RecipeDetail';
 import RecipeEdit from './RecipeEdit';
 import Cart from './Cart';
-import CartDone from './CartDone';
+import CartCheckout from './CartCheckout';
 import Notifications from './Notifications';
 import Settings from './Settings';
 import Login from './Login';
@@ -59,7 +59,78 @@ jest.mock('../services/rohlik', () => ({
     });
   },
   fillCart: () => Promise.resolve({ ok: true, added: 0, failed: [] }),
+  getRohlikCart: () => Promise.resolve({ cart: mockCart }),
+  getRohlikCheckout: (opts) => {
+    mockCheckoutCalls.push(['load', opts]);
+    return Promise.resolve({ checkout: mockCheckout, applied: [] });
+  },
+  getRohlikTimeslots: (day) => {
+    mockCheckoutCalls.push(['slots', day]);
+    return Promise.resolve({ day, slots: mockSlots });
+  },
+  updateRohlikCheckout: (action, payload) => {
+    mockCheckoutCalls.push([action, payload]);
+    return Promise.resolve({ checkout: mockCheckout });
+  },
+  getRohlikCheckoutLink: () => Promise.resolve({ url: 'https://www.rohlik.cz/pokladna' }),
+  getRohlikDeliveryOptions: () =>
+    Promise.resolve({
+      addresses: [{ id: 55, label: 'Hlavní 1, Brno', deliveredTo: true }, { id: 56, label: 'Dlouhá 5, Praha 1', deliveredTo: true }],
+      payments: [{ id: 'CARD', label: 'Kartou online', settable: false }, { id: 'CARD_ON_PLACE', label: 'Kartou při převzetí', settable: true }],
+      packaging: [],
+    }),
+  syncRohlikOrders: () => Promise.resolve(mockSync.next),
 }));
+const mockCheckoutCalls = [];
+const mockSync = { next: { result: 'none', days: [] } };
+const mockCart = {
+  items: [
+    { productId: '709025', name: 'Mléko polotučné 1 l', quantity: 2, unit: '1 l', price: 49.8, priceText: '49,80 Kč', unitPriceText: '24,90 Kč', maxQuantity: 30, imageUrl: null },
+    { productId: '1', name: 'Špagety varianta 1', quantity: 1, unit: '500 g', price: 31, priceText: '31 Kč', maxQuantity: 50, imageUrl: null },
+  ],
+  count: 2,
+  total: 80.8,
+  totalText: '80,80 Kč',
+  minOrder: 749,
+  minOrderText: '749 Kč',
+  minOrderOk: false,
+};
+const mockCheckout = {
+  addresses: [
+    { id: 55, label: 'Hlavní 1, Brno', deliveredTo: true, selected: true },
+    { id: 56, label: 'Dlouhá 5, Praha 1', deliveredTo: true, selected: false },
+  ],
+  address: { id: 55, label: 'Hlavní 1, Brno', valid: true },
+  deliveryType: { selected: 'HOME', options: [] },
+  slot: { id: null, text: '', type: '', valid: false },
+  payment: {
+    selected: 'CARD',
+    methods: [
+      { id: 'CARD', label: 'Kartou online', settable: false, selected: true },
+      { id: 'CARD_ON_PLACE', label: 'Kartou při převzetí', settable: true, selected: false },
+      { id: 'CASH', label: 'Hotově při převzetí', settable: true, selected: false },
+    ],
+    valid: true,
+  },
+  receipt: { doNotPrint: false },
+  packaging: {
+    selected: 'PAPER_BAGS',
+    options: [
+      { id: 'PAPER_BAGS', label: 'Papírové tašky', selected: true },
+      { id: 'REUSABLE_BAGS', label: 'Vratné tašky (se zálohou)', selected: false },
+    ],
+  },
+  courier: { note: '', callOnArrival: true },
+  totals: { estimated: '129,80 Kč', cardHold: '135 Kč', lines: [{ label: 'Zboží', value: '80,80 Kč' }, { label: 'Doprava', value: '49 Kč' }], note: '' },
+  warnings: ['Vyberte čas doručení'],
+  ready: false,
+  suborderAvailable: false,
+};
+const mockSlots = [
+  { id: '101', label: '08:00–09:00', startMin: 480, priceText: '49 Kč', available: true, reservable: false, type: 'ON_TIME' },
+  { id: null, label: '17:00–18:00', startMin: 1020, priceText: '', available: false, reservable: false, type: 'ON_TIME' },
+  { id: '103', label: '18:00–19:00', startMin: 1080, priceText: 'Zdarma', available: true, reservable: true, type: 'ON_TIME' },
+];
 // Plain functions (not jest.fn) – CRA's resetMocks would wipe jest.fn implementations.
 jest.mock('../services/push', () => ({
   pushSupported: () => Promise.resolve(false),
@@ -281,9 +352,55 @@ test('Nákup – Rohlík nepřipojený', () => {
   expect(screen.queryByText('Najít na Rohlíku')).toBeNull();
 });
 
-test('Hotovo', () => {
-  renderAt('/cart/done', <CartDone />);
+test('Hotovo – nic nečeká v košíku', () => {
+  renderAt('/cart/done', <CartCheckout />);
   expect(screen.getByText('Hotovo')).toBeInTheDocument();
+});
+
+const inCartHousehold = (extra = {}) => {
+  const ord = { [today]: { status: 'in_cart', at: 1, by: 'u1' } };
+  const st = (k) => dayStatus(plan[k], ord[k], recipes);
+  return { ...household, orders: ord, statusOf: st, ...extra };
+};
+
+test('Objednávka – košík, doručení, platba, souhrn', async () => {
+  mockCheckoutCalls.length = 0;
+  mockSync.next = { result: 'none', days: [] };
+  renderAt('/cart/checkout', <CartCheckout />, '/cart/checkout', inCartHousehold({
+    settings: { ...household.settings, delivery: { window: 'evening', lead: 'sameDay' } },
+  }));
+  expect(await screen.findByText('Mléko polotučné 1 l')).toBeInTheDocument();
+  expect(screen.getByText('Košík na Rohlíku')).toBeInTheDocument();
+  expect(await screen.findByText('18:00–19:00')).toBeInTheDocument();
+  // preferred window = evening → the first available evening slot is recommended, nothing selected yet
+  expect(screen.getByText('Doporučeno').closest('button')).toHaveTextContent('18:00–19:00');
+  expect(screen.getByText('17:00–18:00').closest('button')).toBeDisabled();
+  expect(mockCheckoutCalls).toContainEqual(['load', { applyDefaults: true, skip: [] }]);
+  expect(mockCheckoutCalls).toContainEqual(['slots', 0]);
+  // online card is shown but chosen only in Rohlík
+  expect(screen.getByText('Kartou online').closest('button')).toHaveAttribute('aria-checked', 'true');
+  expect(screen.getByText('Minimální objednávka je 749 Kč', { exact: false })).toBeInTheDocument();
+  expect(screen.getByText('129,80 Kč')).toBeInTheDocument();
+  expect(screen.getByText('Vyberte čas doručení')).toBeInTheDocument();
+  expect(screen.getByText('Potvrdit a zaplatit na Rohlíku')).toBeInTheDocument();
+  expect(screen.getByText('Objednávku jsem dokončil(a)')).toBeInTheDocument();
+  fireEvent.click(screen.getByText('Hotově při převzetí'));
+  await waitFor(() => expect(mockCheckoutCalls.map((c) => c[0])).toContain('setPayment'));
+  expect(mockCheckoutCalls).toContainEqual(['setPayment', { method: 'CASH' }]);
+});
+
+test('Objednávka – zjištěná objednávka na Rohlíku', async () => {
+  mockSync.next = { result: 'ordered', days: [today], order: { id: 5, slotText: '17:00-18:00', totalText: '812 Kč' } };
+  renderAt('/cart/checkout', <CartCheckout />, '/cart/checkout', inCartHousehold());
+  expect(await screen.findByText('Objednávka přijata ✓')).toBeInTheDocument();
+  expect(screen.getByText('doručení 17:00-18:00', { exact: false })).toBeInTheDocument();
+  mockSync.next = { result: 'none', days: [] };
+});
+
+test('Objednávka – Rohlík nepřipojený', () => {
+  renderAt('/cart/checkout', <CartCheckout />, '/cart/checkout', inCartHousehold({ rohlik: null }));
+  expect(screen.getByText('Účet Rohlík není připojený')).toBeInTheDocument();
+  expect(screen.getByText('Objednávku jsem dokončil(a)')).toBeInTheDocument();
 });
 
 test('Upozornění – jen seznam', () => {
@@ -326,6 +443,32 @@ test('Nastavení – nákup na Rohlíku', async () => {
   expect(screen.getByText('Nejlepší shoda')).toHaveAttribute('aria-checked', 'true');
   fireEvent.click(screen.getByText('Nejlevnější za kg'));
   expect(calls).toEqual([{ 'shop/preferLight': false }, { 'shop/preferBio': true }, { 'shop/sort': 'unitPrice' }]);
+  expect(await screen.findByText('Tento prohlížeč upozornění nepodporuje.', { exact: false })).toBeInTheDocument();
+});
+
+test('Nastavení – doručení z Rohlíku', async () => {
+  const calls = [];
+  renderAt('/settings', <Settings />, '/settings', {
+    ...household,
+    updateSettings: (patch) => {
+      calls.push(patch);
+      return Promise.resolve();
+    },
+  });
+  expect(screen.getByText('Doručení z Rohlíku')).toBeInTheDocument();
+  fireEvent.click(screen.getByText('Večer'));
+  fireEvent.click(screen.getByText('Den před vařením'));
+  fireEvent.click(screen.getByText('Kartou při převzetí'));
+  fireEvent.click(screen.getByText('Vratné tašky (se zálohou)'));
+  fireEvent.click(screen.getByText('Načíst adresy'));
+  fireEvent.click(await screen.findByText('Dlouhá 5, Praha 1'));
+  expect(calls).toEqual([
+    { 'delivery/window': 'evening' },
+    { 'delivery/lead': 'dayBefore' },
+    { 'delivery/paymentId': 'CARD_ON_PLACE', 'delivery/paymentLabel': 'Kartou při převzetí' },
+    { 'delivery/packaging': 'REUSABLE_BAGS' },
+    { 'delivery/addressId': 56, 'delivery/addressLabel': 'Dlouhá 5, Praha 1' },
+  ]);
   expect(await screen.findByText('Tento prohlížeč upozornění nepodporuje.', { exact: false })).toBeInTheDocument();
 });
 

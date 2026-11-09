@@ -20,6 +20,16 @@ test('settings flags', () => {
   assert.deepStrictEqual(r.computeReminderDates('2026-11-10', plan, {}, { remind3d: false }), []);
   assert.deepStrictEqual(r.computeReminderDates('2026-11-12', plan, {}, { remindDaily: false }), []);
 });
+test('delivery the day before cooking shifts the deadline by one day', () => {
+  const lead = { delivery: { lead: 'dayBefore' } };
+  // 2026-11-13 planned: remind3d now on D-4, daily on D-3..D-1
+  assert.deepStrictEqual(r.computeReminderDates('2026-11-09', plan, {}, lead), ['2026-11-13']);
+  assert.deepStrictEqual(r.computeReminderDates('2026-11-09', plan, {}, {}), []);
+  assert.deepStrictEqual(r.computeReminderDates('2026-11-10', plan, {}, lead), ['2026-11-13', '2026-11-14']);
+  assert.deepStrictEqual(r.computeReminderDates('2026-11-10', plan, {}, { ...lead, remindDaily: false }), ['2026-11-14']);
+  assert.strictEqual(r.leadShift(lead), 1);
+  assert.strictEqual(r.leadShift({ delivery: { lead: 'sameDay' } }), 0);
+});
 test('messages', () => {
   assert.strictEqual(r.buildMessage(['2026-11-13']).body, 'Pátek 13. 11. ještě není objednaný');
   assert.strictEqual(r.buildMessage(['2026-11-13', '2026-11-14', '2026-11-15']).body, 'Pá–Ne zatím bez objednávky');

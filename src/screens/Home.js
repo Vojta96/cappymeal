@@ -9,10 +9,11 @@ import { cap, dayInfo } from '../lib/dates';
 import { STATUS, mealCount, mealCountLabel, plannedSlots } from '../lib/meals';
 import { readStorage, writeStorage } from '../lib/storage';
 import { useIsDesktop } from '../hooks/useMediaQuery';
+import { syncRohlikOrders } from '../services/rohlik';
 import './home.css';
 
 export default function Home() {
-  const { todayKey, horizon, plan, recipes, alert, statusOf } = useHousehold();
+  const { todayKey, horizon, plan, recipes, alert, statusOf, rohlik } = useHousehold();
   const { showBanner } = useBanner();
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
@@ -20,7 +21,15 @@ export default function Home() {
   const todaySlots = plannedSlots(plan[todayKey], recipes);
   const next = horizon.slice(1, 4).map((k) => dayInfo(k, todayKey));
   const alertTitle = alert ? alert.title : '';
-  const alertTo = alert && alert.allInCart ? '/cart/done' : '/cart';
+  const alertTo = alert && alert.allInCart ? '/cart/checkout' : '/cart';
+
+  // Days waiting in the Rohlík cart: detect a placed order / emptied cart (throttled, best effort).
+  const hasInCart = horizon.some((k) => statusOf(k) === 'in_cart');
+  const connected = !!(rohlik && rohlik.connected);
+  useEffect(() => {
+    if (!connected || !hasInCart) return;
+    syncRohlikOrders().catch(() => {});
+  }, [connected, hasInCart]);
 
   // In-app banner once per day when there is an alert.
   useEffect(() => {

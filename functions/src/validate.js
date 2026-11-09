@@ -215,6 +215,103 @@ function validateFillCart(data) {
   return { days: [...new Set(days)], products: clean };
 }
 
+// ---------- checkout (Rohlík) ----------
+
+const CHECKOUT_ACTIONS = [
+  'selectAddress', 'selectSlot', 'setPayment', 'setPackaging', 'setCourierNote', 'toggleDeliveryNote',
+  'updateCartItem', 'removeCartItem',
+];
+const PAYMENT_METHODS = ['CARD_ON_PLACE', 'CASH']; // update_payment_method_checkout enum
+const PACKAGINGS = ['PAPER_BAGS', 'REUSABLE_BAGS']; // change_checkout_packaging enum
+const RESERVABLE_SLOT_TYPES = ['ON_TIME', 'VIRTUAL']; // reserve_timeslot enum
+const DEFAULT_FIELDS = ['address', 'payment', 'packaging', 'courierNote'];
+const COURIER_NOTE_MAX = 230; // update_courier_instructions_checkout maxLength
+
+/** Positive integer id (number or digit string, ≤ 15 digits). */
+function intId(v, label) {
+  const s = typeof v === 'number' ? String(v) : (isStr(v) ? v.trim() : '');
+  const n = /^\d{1,15}$/.test(s) ? Number(s) : NaN;
+  if (!Number.isSafeInteger(n) || n < 1) throw new InputError(`Neplatné ${label}.`);
+  return n;
+}
+
+/** Courier note: trimmed, control characters removed, ≤ 230 chars ('' clears it). */
+function courierNote(v) {
+  if (!isStr(v)) throw new InputError('Neplatná poznámka pro kurýra.');
+  // eslint-disable-next-line no-control-regex
+  const s = v.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (s.length > COURIER_NOTE_MAX) throw new InputError(`Poznámka pro kurýra může mít nejvýše ${COURIER_NOTE_MAX} znaků.`);
+  return s;
+}
+
+/** get_timeslots_checkout day index: 0 = today … 3 → '0'..'3' (the tool's string enum). */
+function validateDayIndex(data) {
+  const d = isPlainObject(data) ? data.day : undefined;
+  const s = typeof d === 'number' ? String(d) : d;
+  if (!['0', '1', '2', '3'].includes(s)) throw new InputError('Neplatný den doručení.');
+  return s;
+}
+
+/** rohlikCheckout input: { applyDefaults?: bool, skip?: ['address'|'payment'|'packaging'|'courierNote'] } */
+function validateCheckoutLoad(data) {
+  const d = isPlainObject(data) ? data : {};
+  if (d.applyDefaults !== undefined && typeof d.applyDefaults !== 'boolean') throw new InputError('Neplatný požadavek.');
+  const skip = d.skip === undefined ? [] : d.skip;
+  if (!Array.isArray(skip) || skip.length > 4 || !skip.every((x) => DEFAULT_FIELDS.includes(x))) {
+    throw new InputError('Neplatný požadavek.');
+  }
+  return { applyDefaults: d.applyDefaults === true, skip: [...new Set(skip)] };
+}
+
+/** rohlikCheckoutUpdate input → normalised update. */
+function validateCheckoutUpdate(data) {
+  const d = isPlainObject(data) ? data : {};
+  if (!CHECKOUT_ACTIONS.includes(d.action)) throw new InputError('Neplatná akce.');
+  switch (d.action) {
+    case 'selectAddress':
+      return { action: d.action, addressId: intId(d.addressId, 'adresa') };
+    case 'selectSlot': {
+      const slotId = String(intId(d.slotId, 'termín doručení'));
+      const out = { action: d.action, slotId, reserve: false };
+      if (d.reserve !== undefined && typeof d.reserve !== 'boolean') throw new InputError('Neplatný termín doručení.');
+      if (d.reserve === true) {
+        if (!RESERVABLE_SLOT_TYPES.includes(d.slotType)) throw new InputError('Neplatný termín doručení.');
+        out.reserve = true;
+        out.slotType = d.slotType;
+      }
+      return out;
+    }
+    case 'setPayment':
+      if (!PAYMENT_METHODS.includes(d.method)) throw new InputError('Tento způsob platby nelze zvolit v aplikaci.');
+      return { action: d.action, method: d.method };
+    case 'setPackaging':
+      if (!PACKAGINGS.includes(d.packaging)) throw new InputError('Neplatné balení.');
+      return { action: d.action, packaging: d.packaging };
+    case 'setCourierNote': {
+      const out = { action: d.action };
+      if (d.note !== undefined && d.note !== null) out.note = courierNote(d.note);
+      if (d.callOnArrival !== undefined && d.callOnArrival !== null) {
+        if (typeof d.callOnArrival !== 'boolean') throw new InputError('Neplatná volba.');
+        out.callOnArrival = d.callOnArrival;
+      }
+      if (out.note === undefined && out.callOnArrival === undefined) throw new InputError('Chybí poznámka.');
+      return out;
+    }
+    case 'toggleDeliveryNote':
+      if (typeof d.doNotPrint !== 'boolean') throw new InputError('Neplatná volba.');
+      return { action: d.action, doNotPrint: d.doNotPrint };
+    case 'updateCartItem': {
+      const q = d.quantity;
+      if (!Number.isInteger(q) || q < 0 || q > 50) throw new InputError('Neplatné množství (0–50).');
+      return { action: d.action, productId: intId(d.productId, 'ID produktu'), quantity: q };
+    }
+    case 'removeCartItem':
+      return { action: d.action, productId: intId(d.productId, 'ID produktu') };
+    default:
+      throw new InputError('Neplatná akce.');
+  }
+}
+
 function validateUid(data) {
   const uid = isPlainObject(data) && isStr(data.uid) ? data.uid : '';
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(uid)) throw new InputError('Neplatný člen.');
@@ -251,5 +348,12 @@ module.exports = {
   validateShopPrefs,
   validateFillCart,
   validateUid,
+  CHECKOUT_ACTIONS,
+  PAYMENT_METHODS,
+  PACKAGINGS,
+  COURIER_NOTE_MAX,
+  validateDayIndex,
+  validateCheckoutLoad,
+  validateCheckoutUpdate,
   ipKey,
 };

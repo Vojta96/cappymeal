@@ -70,3 +70,39 @@ export async function fillCart(days, products) {
   }
   return out;
 }
+
+// ---------- checkout (prepared here, confirmed + paid by the customer in Rohlík) ----------
+
+/** → { cart: { items[{ productId, name, quantity, unit, price, priceText, imageUrl, maxQuantity, … }], total, totalText, minOrder, minOrderOk } } */
+export const getRohlikCart = () => callFunction('rohlikCart', undefined, LONG);
+/** applyDefaults: apply the household's settings/delivery once (skip = fields the user already changed). */
+export const getRohlikCheckout = ({ applyDefaults = false, skip = [] } = {}) =>
+  callFunction('rohlikCheckout', applyDefaults ? { applyDefaults: true, skip } : {}, LONG);
+/** day: 0 = today … 3 → { day, slots[{ id, label, startMin, priceText, available, reservable, type }] } */
+export const getRohlikTimeslots = (day) => callFunction('rohlikTimeslots', { day }, LONG);
+/** action: selectAddress | selectSlot | setPayment | setPackaging | setCourierNote | toggleDeliveryNote | updateCartItem | removeCartItem */
+export const updateRohlikCheckout = (action, payload = {}) =>
+  callFunction('rohlikCheckoutUpdate', { action, ...payload }, LONG);
+export const getRohlikCheckoutLink = () => callFunction('rohlikCheckoutLink', undefined, LONG);
+/** Settings: { addresses[{ id, label }], payments[{ id, label, settable }], packaging[{ id, label }] } */
+export const getRohlikDeliveryOptions = () => callFunction('rohlikDeliveryOptions', undefined, LONG);
+
+export const SYNC_INTERVAL_MS = 2 * 60 * 1000;
+let lastSyncAt = 0;
+let syncing = null;
+
+/**
+ * Detects a placed order / an emptied Rohlík cart for the household's in_cart days (server decides and
+ * writes). Throttled to once per SYNC_INTERVAL_MS unless force; returns null when skipped.
+ * → { result: 'idle'|'none'|'ordered'|'cleared', days[], order?{ id, slotText, totalText } }
+ */
+export function syncRohlikOrders({ force = false, minGapMs = 15000 } = {}) {
+  const now = Date.now();
+  if (syncing) return syncing;
+  if (now - lastSyncAt < (force ? minGapMs : SYNC_INTERVAL_MS)) return Promise.resolve(null);
+  lastSyncAt = now;
+  syncing = callFunction('rohlikSyncOrders', undefined, LONG).finally(() => {
+    syncing = null;
+  });
+  return syncing;
+}

@@ -39,10 +39,10 @@ function TabBar({ badge }) {
 
 // Desktop sidebar (design2): same targets as the tab bar plus Upozornění.
 const NAV = [
-  { to: '/', label: 'Přehled', icon: 'home', match: (p) => p === '/' || p.startsWith('/cart/done') },
+  { to: '/', label: 'Přehled', icon: 'home', match: (p) => p === '/' },
   { to: '/plan', label: 'Plán', icon: 'calendar_month', match: (p) => p.startsWith('/plan') },
   { to: '/recipes', label: 'Recepty', icon: 'menu_book', match: (p) => p.startsWith('/recipes') },
-  { to: '/cart', label: 'Nákup', icon: 'shopping_basket', match: (p) => p === '/cart' },
+  { to: '/cart', label: 'Nákup', icon: 'shopping_basket', match: (p) => p === '/cart' || p.startsWith('/cart/') },
   { to: '/notifications', label: 'Upozornění', icon: 'notifications', match: (p) => p.startsWith('/notifications') },
 ];
 const AVATAR_COLORS = ['#C49A6C', '#8FA87A'];

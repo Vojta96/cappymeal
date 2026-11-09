@@ -105,6 +105,7 @@
             "at": { ".validate": "newData.isNumber()" },
             "by": { ".validate": "newData.val() === auth.uid" },
             "planChanged": { ".validate": "newData.isBoolean()" },
+            "rohlikOrderId": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() % 1 === 0" },
             "$other": { ".validate": false }
           }
         },
@@ -139,6 +140,17 @@
             "preferLight": { ".validate": "newData.isBoolean()" },
             "preferBio": { ".validate": "newData.isBoolean()" },
             "sort": { ".validate": "newData.isString() && (newData.val() === 'best' || newData.val() === 'unitPrice')" },
+            "$other": { ".validate": false }
+          },
+          "delivery": {
+            "addressId": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 999999999999999 && newData.val() % 1 === 0" },
+            "addressLabel": { ".validate": "newData.isString() && newData.val().length <= 80" },
+            "window": { ".validate": "newData.isString() && (newData.val() === 'morning' || newData.val() === 'afternoon' || newData.val() === 'evening' || newData.val() === 'any')" },
+            "lead": { ".validate": "newData.isString() && (newData.val() === 'dayBefore' || newData.val() === 'sameDay')" },
+            "paymentId": { ".validate": "newData.isString() && newData.val().matches(/^[A-Z0-9_]{1,40}$/)" },
+            "paymentLabel": { ".validate": "newData.isString() && newData.val().length <= 60" },
+            "courierNote": { ".validate": "newData.isString() && newData.val().length <= 300" },
+            "packaging": { ".validate": "newData.isString() && (newData.val() === 'PAPER_BAGS' || newData.val() === 'REUSABLE_BAGS')" },
             "$other": { ".validate": false }
           },
           "$other": { ".validate": false }

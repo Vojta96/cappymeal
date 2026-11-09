@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useHousehold } from '../context/HouseholdContext';
 import { Icon } from '../components/ui';
 import { dayInfo, relativeTime } from '../lib/dates';
+import { leadShift } from '../lib/checkout';
 import './notifications.css';
 
 const ACTIVITY_META = {
@@ -24,9 +25,9 @@ export default function Notifications() {
         bg: 'var(--alert-bg)',
         fg: '#9A5B12',
         title: alert.title,
-        text: 'Upozornění 3 dny předem · opakuje se denně',
+        text: `Upozornění ${leadShift(settings) ? 4 : 3} dny předem · opakuje se denně`,
         time: `Dnes ${settings.remindHour}:00`,
-        to: alert.allInCart ? '/cart/done' : '/cart',
+        to: alert.allInCart ? '/cart/checkout' : '/cart',
       });
     }
     // Last order (days sharing the newest timestamp).
@@ -45,7 +46,7 @@ export default function Notifications() {
         title: status === 'ordered' ? 'Objednávka dokončena' : 'Košík na Rohlíku čeká na potvrzení',
         text: `Suroviny na ${label}`,
         time: relativeTime(lastAt),
-        to: status === 'ordered' ? null : '/cart/done',
+        to: status === 'ordered' ? null : '/cart/checkout',
         state: status === 'ordered' ? null : { days },
       });
     }
@@ -66,7 +67,7 @@ export default function Notifications() {
         });
       });
     return list;
-  }, [alert, orders, activity, uid, settings.remindHour]);
+  }, [alert, orders, activity, uid, settings]);
 
   return (
     <div className="screen" style={{ gap: 20 }}>

@@ -112,6 +112,55 @@
   outline-offset: 1px;
 }
 
+.delivery-card {
+  padding: 4px 16px;
+}
+
+.delivery-card__block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.delivery-card__block:last-child {
+  border-bottom: none;
+}
+
+.delivery-card__label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.delivery-card__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.delivery-card__value {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.delivery-card__link {
+  align-self: flex-start;
+  font-size: 13px;
+}
+
+.delivery-card__seg {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.delivery-card__seg button {
+  flex: 1 0 auto;
+}
+
 @media (min-width: 1024px) {
   .settings-grid {
     display: grid;

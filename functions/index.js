@@ -13,6 +13,7 @@ const enc = require('./src/crypto');
 const rl = require('./src/rateLimit');
 const oauth = require('./src/rohlikOAuth');
 const matcher = require('./src/matcher');
+const co = require('./src/checkout');
 
 const DB_URL = 'https://cappymeal-go-default-rtdb.europe-west1.firebasedatabase.app';
 admin.initializeApp({ databaseURL: DB_URL });
@@ -48,6 +49,11 @@ function handle(name, fn) {
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       if (e instanceof v.InputError) throw fail('invalid-argument', e.message, e.code);
+      if (e instanceof rohlik.ToolError) {
+        // Only the tool name + a masked summary (never the tool's text, which may contain personal data).
+        console.warn(`${name}: Rohlík tool ${e.tool} returned an error:`, e.detail);
+        throw fail('failed-precondition', 'Rohlík požadavek odmítl. Zkuste to znovu nebo jinou volbu.', 'ROHLIK_REJECTED');
+      }
       console.error(`${name} failed:`, (e && e.message) || String(e));
       throw fail('internal', 'Něco se nepovedlo. Zkuste to znovu.', 'INTERNAL');
     }
@@ -453,6 +459,13 @@ async function withClient(hid, fn) {
   }
   try {
     return await fn(client);
+  } catch (e) {
+    if (!(e instanceof HttpsError) && !(e instanceof rohlik.ToolError) && isAuthError(e)) {
+      console.error('Rohlik call rejected the token');
+      await markExpired(hid);
+      throw expiredError();
+    }
+    throw e;
   } finally {
     try { await client.close(); } catch (e) { /* ignore */ }
   }
@@ -550,12 +563,6 @@ exports.rohlikStatus = onCall(ROHLIK, handle('rohlikStatus', async (request) => 
     const out = { connected: true, emailMasked, toolCount: tools.length };
     if (ownerSnap.val() === uid) {
       out.tools = tools.map((t) => String(t.name));
-      // TEMPORARY diagnostics for the checkout flow: schemas + masked output structure, read-only tools only.
-      try {
-        await rohlik.inspectCheckoutTools(client, (d) => console.info('rohlik inspect:', JSON.stringify(d).slice(0, 6000)));
-      } catch (e) {
-        console.warn('rohlik inspect failed:', (e && e.message) || '');
-      }
     }
     return out;
   });
@@ -574,12 +581,6 @@ exports.rohlikMatch = onCall(ROHLIK, handle('rohlikMatch', async (request) => {
       if (loggedKeys) return;
       loggedKeys = true;
       console.info('rohlikMatch raw product keys:', rohlik.describeKeys(raw));
-    };
-    let diagLogged = 0;
-    const onDiag = (d) => {
-      if (diagLogged >= 3) return;
-      diagLogged += 1;
-      console.info('rohlikMatch diag:', JSON.stringify(d));
     };
     const search = (query) => rohlik.searchProducts(client, query, { onRaw });
     const results = new Array(items.length);
@@ -640,6 +641,168 @@ exports.rohlikFillCart = onCall(ROHLIK, handle('rohlikFillCart', async (request)
   };
 }));
 
+// ---------- Rohlík checkout (prepared in CappyMeal, confirmed + paid by the customer in Rohlík) ----------
+// Any household member may use the household's connected account. Every tool call goes through the
+// adapter allowlist (rohlik.callJson → callAllowed); nothing here can submit or cancel an order.
+
+/** Member + connected + rate limit, then runs work(call, member) on one MCP session. */
+async function withCheckout(request, fnName, max, work) {
+  const m = await requireMember(request);
+  await requireConnected(m.hid);
+  await limit(`h/${m.hid}/${fnName}`, max);
+  return withClient(m.hid, (client) => work((name, args) => rohlik.callJson(client, name, args), m));
+}
+
+/** Fills missing cart images from Rohlík's public product API (best effort). */
+async function withImages(cart) {
+  const ids = cart.items.filter((x) => !x.imageUrl).map((x) => x.productId);
+  if (!ids.length) return cart;
+  const imgs = await rohlik.fetchProductImages(ids);
+  cart.items.forEach((x) => {
+    const m = imgs.get(x.productId);
+    if (!x.imageUrl && m && m.imageUrl) x.imageUrl = m.imageUrl;
+  });
+  return cart;
+}
+
+exports.rohlikCart = onCall(ROHLIK, handle('rohlikCart', async (request) => withCheckout(
+  request, 'rohlikCart', 60, async (call) => ({ cart: await withImages(await co.loadCart(call)) }),
+)));
+
+exports.rohlikCheckout = onCall(ROHLIK, handle('rohlikCheckout', async (request) => {
+  const opts = v.validateCheckoutLoad(request.data);
+  return withCheckout(request, 'rohlikCheckout', 60, async (call, m) => {
+    if (!opts.applyDefaults) return { checkout: await co.loadCheckout(call), applied: [] };
+    const delivery = (await db().ref(`households/${m.hid}/settings/delivery`).get()).val();
+    return co.applyDefaults(call, delivery, opts.skip);
+  });
+}));
+
+/** Settings card "Doručení z Rohlíku": addresses (id + short label), payment methods, packaging. */
+exports.rohlikDeliveryOptions = onCall(ROHLIK, handle('rohlikDeliveryOptions', async (request) => withCheckout(
+  request, 'rohlikDeliveryOptions', 30, async (call) => {
+    let checkout = null;
+    try {
+      checkout = await co.loadCheckout(call);
+    } catch (e) {
+      if (!(e instanceof rohlik.ToolError)) throw e;
+    }
+    const addresses = checkout && checkout.addresses.length
+      ? checkout.addresses
+      : co.parseAddresses(await call('get_user_addresses', { context: 'Výběr výchozí adresy doručení.' }));
+    const methods = checkout && checkout.payment.methods.length
+      ? checkout.payment.methods
+      : co.SETTABLE_PAYMENTS.map((id) => ({ id, label: co.paymentLabel(id), settable: true }));
+    return {
+      addresses: addresses.map((a) => ({ id: a.id, label: a.label, deliveredTo: a.deliveredTo })),
+      payments: methods.map((x) => ({ id: x.id, label: x.label, settable: x.settable })),
+      packaging: co.PACKAGING.map((id) => ({ id, label: co.PACKAGING_LABEL[id] })),
+    };
+  },
+)));
+
+let slotShapeLogged = false;
+exports.rohlikTimeslots = onCall(ROHLIK, handle('rohlikTimeslots', async (request) => {
+  const day = v.validateDayIndex(request.data);
+  return withCheckout(request, 'rohlikTimeslots', 120, async (call) => {
+    const payload = await call('get_timeslots_checkout', {
+      timeslots_day: day, include_15min_slots: false, context: 'Výběr času doručení objednávky.',
+    });
+    if (!slotShapeLogged) {
+      // The output shape is not verified yet: log its structure once per instance (types only, no values).
+      slotShapeLogged = true;
+      console.info('rohlikTimeslots shape:', JSON.stringify(rohlik.shapeOf(payload)).slice(0, 3000));
+    }
+    return { day: Number(day), slots: co.parseTimeslots(payload) };
+  });
+}));
+
+exports.rohlikCheckoutUpdate = onCall(ROHLIK, handle('rohlikCheckoutUpdate', async (request) => {
+  const u = v.validateCheckoutUpdate(request.data);
+  return withCheckout(request, 'rohlikCheckoutUpdate', 150, async (call) => {
+    const { warnings } = await co.applyUpdate(call, u);
+    const out = {};
+    if (u.action === 'updateCartItem' || u.action === 'removeCartItem') {
+      out.cart = await withImages(await co.loadCart(call));
+    }
+    out.checkout = await co.loadCheckout(call);
+    out.checkout.warnings = [...warnings, ...out.checkout.warnings].slice(0, 6);
+    return out;
+  });
+}));
+
+exports.rohlikCheckoutLink = onCall(ROHLIK, handle('rohlikCheckoutLink', async (request) => withCheckout(
+  request, 'rohlikCheckoutLink', 30, async (call) => {
+    const url = await co.checkoutLink(call);
+    if (!url) {
+      console.warn('rohlikCheckoutLink: no usable https rohlik.cz link');
+      throw fail('unavailable', 'Odkaz na dokončení objednávky se nepodařilo získat. Otevřete aplikaci Rohlík.', 'ROHLIK_NO_LINK');
+    }
+    return { url };
+  },
+)));
+
+/**
+ * Detects what happened on Rohlík with the household's in_cart days: an order placed after the cart was filled
+ * → days 'ordered' (reminders stop); empty cart and no new order → days back to pending. No in_cart days →
+ * Rohlík is not called at all.
+ */
+exports.rohlikSyncOrders = onCall(ROHLIK, handle('rohlikSyncOrders', async (request) => {
+  const { uid, hid } = await requireMember(request);
+  const today = rem.pragueDateString(new Date());
+  const ordersRef = db().ref(`households/${hid}/orders`);
+  const readInCart = async () => Object.entries((await ordersRef.orderByKey().startAt(today).get()).val() || {})
+    .filter(([, o]) => o && o.status === 'in_cart')
+    .map(([day, o]) => ({ day, at: Number(o.at) || 0 }));
+  const inCart = await readInCart();
+  if (!inCart.length) return { result: 'idle', days: [] };
+  if (!(await db().ref(`rohlikCredentials/${hid}`).get()).exists()) return { result: 'idle', days: [] };
+  await limit(`h/${hid}/rohlikSyncOrders`, 60);
+  const { orders, cart } = await withClient(hid, async (client) => {
+    const call = (name, args) => rohlik.callJson(client, name, args);
+    let o = null;
+    let c = null;
+    try {
+      o = await co.loadOrders(call);
+    } catch (e) {
+      if (!(e instanceof rohlik.ToolError)) throw e;
+      console.warn('rohlikSyncOrders: fetch_orders failed:', e.detail);
+    }
+    try {
+      c = await co.loadCart(call);
+    } catch (e) {
+      if (!(e instanceof rohlik.ToolError)) throw e;
+      console.warn('rohlikSyncOrders: get_cart failed:', e.detail);
+    }
+    return { orders: o, cart: c };
+  });
+  const decision = co.decideSync({ inCart, orders, cart, now: Date.now() });
+  if (decision.action === 'none') return { result: 'none', days: [] };
+  // Re-read right before writing: only days still in_cart with the same fill time are touched.
+  const fresh = await readInCart();
+  const same = fresh.filter((x) => inCart.some((y) => y.day === x.day && y.at === x.at)).map((x) => x.day);
+  if (!same.length) return { result: 'none', days: [] };
+  const at = Date.now();
+  const updates = {};
+  if (decision.action === 'ordered') {
+    same.forEach((d) => {
+      updates[`households/${hid}/orders/${d}`] = { status: 'ordered', at, by: uid, rohlikOrderId: decision.order.id };
+    });
+    const actKey = db().ref(`households/${hid}/activity`).push().key;
+    updates[`households/${hid}/activity/${actKey}`] = {
+      type: 'order', text: 'Objednávka na Rohlíku je potvrzená – připomínky pro tyto dny jsme vypnuli.', by: uid, at,
+    };
+  } else {
+    same.forEach((d) => { updates[`households/${hid}/orders/${d}`] = null; });
+  }
+  await db().ref().update(updates);
+  const out = { result: decision.action, days: same };
+  if (decision.action === 'ordered') {
+    out.order = { id: decision.order.id, slotText: decision.order.slotText, totalText: decision.order.totalText };
+  }
+  return out;
+}));
+
 // ---------- reminders ----------
 
 const BAD_TOKEN_CODES = [
@@ -670,7 +833,7 @@ async function remindHousehold(hid, hour, today) {
   const remindHour = settings.remindHour === undefined ? 9 : Number(settings.remindHour);
   if (remindHour !== hour) return;
   const from = rem.addDays(today, 1);
-  const to = rem.addDays(today, 3);
+  const to = rem.addDays(today, 3 + rem.leadShift(settings));
   const [planSnap, ordersSnap] = await Promise.all([
     base.child('plan').orderByKey().startAt(from).endAt(to).get(),
     base.child('orders').orderByKey().startAt(from).endAt(to).get(),

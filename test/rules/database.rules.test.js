@@ -235,6 +235,10 @@ test('orders validation', async () => {
   await assertSucceeds(set(ref(bob, `households/${HID}/orders/${today}/planChanged`), true));
   await assertFails(set(ref(bob, `households/${HID}/orders/2026-11-20/planChanged`), true));
   await assertSucceeds(remove(ref(bob, `households/${HID}/orders/${today}`)));
+  // rohlikOrderId (written by rohlikSyncOrders) is a positive integer
+  await assertSucceeds(set(ref(bob, `households/${HID}/orders/2026-11-13`), { status: 'ordered', at: 5, by: 'bob', rohlikOrderId: 123456 }));
+  await assertFails(set(ref(bob, `households/${HID}/orders/2026-11-14`), { status: 'ordered', at: 5, by: 'bob', rohlikOrderId: 'x' }));
+  await assertFails(set(ref(bob, `households/${HID}/orders/2026-11-14`), { status: 'ordered', at: 5, by: 'bob', rohlikOrderId: 1.5 }));
 });
 
 test('pantry, settings, activity, pushTokens, regulars', async () => {
@@ -278,6 +282,33 @@ test('settings/shop validation', async () => {
   // the rest of the settings stay intact
   const snap = await get(ref(bob, `households/${HID}/settings`));
   assert.strictEqual(snap.val().remindHour, 9);
+});
+
+test('settings/delivery validation', async () => {
+  const bob = db('bob');
+  await assertSucceeds(update(ref(bob, `households/${HID}/settings`), {
+    'delivery/addressId': 123456,
+    'delivery/addressLabel': 'Hlavní 1, Brno',
+    'delivery/window': 'evening',
+    'delivery/lead': 'dayBefore',
+    'delivery/paymentId': 'CARD_ON_PLACE',
+    'delivery/paymentLabel': 'Kartou při převzetí',
+    'delivery/courierNote': 'Zvonek 3. patro',
+    'delivery/packaging': 'REUSABLE_BAGS',
+  }));
+  await assertSucceeds(set(ref(bob, `households/${HID}/settings/delivery/packaging`), null));
+  await assertFails(set(ref(bob, `households/${HID}/settings/delivery/addressId`), 'abc'));
+  await assertFails(set(ref(bob, `households/${HID}/settings/delivery/addressId`), 1.5));
+  await assertFails(set(ref(bob, `households/${HID}/settings/delivery/addressLabel`), 'x'.repeat(81)));
+  await assertFails(set(ref(bob, `households/${HID}/settings/delivery/window`), 'night'));
+  await assertFails(set(ref(bob, `households/${HID}/settings/delivery/lead`), 'weekBefore'));
+  await assertFails(set(ref(bob, `households/${HID}/settings/delivery/paymentId`), 'card; drop'));
+  await assertFails(set(ref(bob, `households/${HID}/settings/delivery/courierNote`), 'x'.repeat(301)));
+  await assertFails(set(ref(bob, `households/${HID}/settings/delivery/packaging`), 'PLASTIC'));
+  await assertFails(set(ref(bob, `households/${HID}/settings/delivery/phone`), '777'));
+  await assertFails(set(ref(db('eve'), `households/${HID}/settings/delivery/window`), 'any'));
+  const snap = await get(ref(bob, `households/${HID}/settings/delivery`));
+  assert.strictEqual(snap.val().lead, 'dayBefore');
 });
 
 test('productPrefs validation', async () => {

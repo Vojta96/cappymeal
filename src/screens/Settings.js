@@ -6,6 +6,7 @@ import { Icon, Spinner, Toast, Toggle } from '../components/ui';
 import { enablePush, pushSupported } from '../services/push';
 import { removeMember, rotateJoinCode, SEED_RECIPE_COUNT } from '../services/household';
 import RohlikAccount from '../components/RohlikAccount';
+import DeliverySettings from '../components/DeliverySettings';
 import { capitalizeFirst, householdDisplayName, initial } from '../lib/text';
 import { shopPrefs } from '../lib/shop';
 import './notifications.css';
@@ -41,7 +42,7 @@ const isStandalone = () =>
 export default function Settings() {
   const navigate = useNavigate();
   const { logout, nickname } = useAuth();
-  const { hid, uid, members, joinCode, name, settings, owner, isOwner, updateSettings, updateHouseholdName, replaceRecipesWithSeed } =
+  const { hid, uid, members, joinCode, name, settings, owner, isOwner, updateSettings, updateHouseholdName, replaceRecipesWithSeed, rohlik } =
     useHousehold();
   const [ownerBusy, setOwnerBusy] = useState(null); // 'code' | member uid
   const [nameDraft, setNameDraft] = useState(capitalizeFirst(name));
@@ -326,6 +327,16 @@ export default function Settings() {
               Platí pro celou domácnost. Produkty, které jste už jednou vybrali, nabídneme příště jako první.
             </div>
           </div>
+
+          {rohlik && rohlik.connected && (
+            <div className="stack">
+              <h2 className="h-section">Doručení z Rohlíku</h2>
+              <DeliverySettings onToast={setToast} />
+              <div className="push-box__hint" style={{ padding: '0 4px' }}>
+                Při objednávce předvyplníme adresu, platbu, balení a poznámku a doporučíme termín v preferovaném čase.
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="settings-col">

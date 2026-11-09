@@ -25,6 +25,7 @@ import { SLOT_BY_KEY, dayStatus, buildAlert } from '../lib/meals';
 import { DEFAULT_SETTINGS, ensureHouseholdMeta, seedRecipeRecords } from '../services/household';
 import { capitalizeFirst } from '../lib/text';
 import { prefUpdates } from '../lib/shop';
+import { leadShift } from '../lib/checkout';
 
 export const HouseholdContext = createContext(null);
 
@@ -116,7 +117,8 @@ export function HouseholdProvider({ hid, children }) {
     (key) => dayStatus(plan[key], orders[key], recipes),
     [plan, orders, recipes]
   );
-  const alert = useMemo(() => buildAlert(todayKey, horizon, statusOf), [todayKey, horizon, statusOf]);
+  const shift = leadShift(data.settings);
+  const alert = useMemo(() => buildAlert(todayKey, horizon, statusOf, shift), [todayKey, horizon, statusOf, shift]);
   const pendingDays = useMemo(() => horizon.filter((k) => statusOf(k) === 'pending'), [horizon, statusOf]);
 
   // ---------- photos (lazy, cached) ----------

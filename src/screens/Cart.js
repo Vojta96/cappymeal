@@ -14,7 +14,8 @@ import {
   regularItems,
   shoppingListText,
 } from '../lib/meals';
-import { fillCart, getRohlikStatus, matchProducts, needsReconnect } from '../services/rohlik';
+import { fillCart, matchProducts, needsReconnect, syncRohlikOrders } from '../services/rohlik';
+import { rememberAdded } from './CartCheckout';
 import ProductCarousel from '../components/ProductCarousel';
 import { formatQty, leftoverText, needForServer, presetQty, sumNeed } from '../lib/quantity';
 import { arrangeCandidates, shopPrefs } from '../lib/shop';
@@ -240,12 +241,13 @@ export default function Cart() {
 
   const connected = !!(rohlik && rohlik.connected);
 
-  // Ask the server about the Rohlík connection once per visit (also refreshes the token; the server side
-  // will sync cart / order state from here). Best effort, the screen never waits for it.
+  // Days waiting in the Rohlík cart: let the server check whether the order was placed or the cart emptied
+  // (throttled, best effort – the household subscription shows the result).
+  const hasInCart = horizon.some((k) => statusOf(k) === 'in_cart');
   useEffect(() => {
-    if (!connected) return;
-    getRohlikStatus().catch(() => {});
-  }, [connected]);
+    if (!connected || !hasInCart) return;
+    syncRohlikOrders().catch(() => {});
+  }, [connected, hasInCart]);
 
   const mustConnect = !connected || needsReconnect(error);
   const reconnect = (!connected && !!(rohlik && rohlik.needsReconnect)) || (connected && needsReconnect(error));
@@ -446,12 +448,15 @@ export default function Cart() {
       if (!res || (!res.ok && !res.added)) {
         throw new Error('Do košíku se nepodařilo nic vložit.');
       }
-      navigate('/cart/done', {
+      const failedIds = new Set((res.failed || []).map((f) => String(f.productId)));
+      const addedIds = chosen.map((x) => String(x.product.productId)).filter((id) => !failedIds.has(id));
+      rememberAdded(addedIds);
+      navigate('/cart/checkout', {
         state: {
           days,
           added: res.added,
           failed: (res.failed || []).length,
-          cartTotalText: res.cartTotalText || formatKc(total),
+          addedIds,
         },
       });
     } catch (e) {
@@ -676,7 +681,7 @@ export default function Cart() {
             {step === 'filling' ? 'Vkládám do košíku…' : 'Vložit do košíku na Rohlíku'}
           </button>
           <div className="cart__panel-note">
-            Objednávku pak potvrdíte v aplikaci Rohlík, kde zvolíte i čas doručení.
+            Pak tu zvolíte doručení a platbu a objednávku potvrdíte na Rohlíku.
           </div>
         </>
       )}
