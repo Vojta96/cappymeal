@@ -68,7 +68,7 @@ jest.mock('../services/push', () => ({
 }));
 jest.mock('../services/household', () => ({
   DEFAULT_SETTINGS: {},
-  SEED_RECIPE_COUNT: 174,
+  SEED_RECIPE_COUNT: 165,
   ensureHouseholdMeta: () => Promise.resolve({}),
   rotateJoinCode: () => Promise.resolve({ code: 'ZZZZ2345' }),
   removeMember: () => Promise.resolve({ ok: true }),

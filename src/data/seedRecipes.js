@@ -24,19 +24,19 @@ const MealsList = [
   ], 'Chleba opečeme v toustovači. Avokádo rozmačkáme s citronovou šťávou, solí a pepřem, namažeme na toust a doplníme půlkami rajčat.'),
   r('Smažená vajíčka se šunkou v tortille', '🌯', 'breakfast', 'Smažení', [
     ['Tortilla pšeničná', '2 ks'], ['Vejce', '4 ks'], ['Šunka', '4 plátky'], ['Eidam plátkový', '2 plátky'], ['Olej', '1 lžíce'],
-  ], 'Na pánvi usmažíme vajíčka a šunku. Tortillu krátce ohřejeme, vložíme sýr, šunku a vajíčka a pevně zabalíme.'),
+  ], 'Na pánvi usmažíme vajíčka (míchaná nebo volské oko) a šunku. Tortillu krátce ohřejeme, vložíme sýr, šunku a vajíčka a pevně zabalíme. Varianta od Páji: vejce rozlijeme na pánev, přiložíme na něj tortillu, otočíme a doplníme podle chuti zeleninou, šunkou nebo sýrem.'),
   r('Jogurt s borůvkami / banánem', '🥛', 'breakfast', 'Bez vaření', [
     ['Řecký jogurt', '300 g'], ['Borůvky', '100 g'], ['Banán', '1 ks'], ['Med', '2 lžičky'], ['Ovesné vločky', '4 lžíce'],
-  ], 'Jogurt rozdělíme do misek, přidáme borůvky nebo nakrájený banán, vločky a pokapeme medem.'),
+  ], 'Jogurt (ideálně s 0 % tuku) rozdělíme do misek, přidáme borůvky nebo nakrájený banán (může být i jiné ovoce), vločky a pokapeme medem.'),
   r('Croissant se šunkou, sýrem a salátem', '🥐', 'breakfast', 'Bez vaření', [
     ['Croissant', '2 ks'], ['Šunka', '4 plátky'], ['Eidam plátkový', '2 plátky'], ['Salát ledový', '4 listy'], ['Rajčata', '1 ks'],
   ], 'Croissanty podélně rozkrojíme, případně krátce ohřejeme. Naplníme šunkou, sýrem, salátem a plátky rajčete.'),
   r('Proteinové slané palačinky', '🥞', 'breakfast', 'Smažení', [
     ['Vejce', '3 ks'], ['Ovesné vločky', '60 g'], ['Cottage cheese', '150 g'], ['Šunka', '4 plátky'], ['Pažitka', '1 hrst'],
-  ], 'Vejce, vločky a cottage rozmixujeme na hladké těsto. Pečeme na pánvi z obou stran a plníme šunkou a pažitkou.'),
+  ], 'Vejce, vločky a cottage rozmixujeme na hladké těsto. Pečeme na pánvi z obou stran a plníme šunkou a pažitkou. Varianta od Páji: klasické těsto z mouky, mléka a vajec se slanými přísadami (šunka, sýr, zelenina), smažit na pánvi nebo zapéct ve vaflovači.'),
   r('Omeleta', '🍳', 'breakfast', 'Smažení', [
     ['Vejce', '4 ks'], ['Eidam plátkový', '2 plátky'], ['Paprika', '½ ks'], ['Šunka', '2 plátky'], ['Máslo', '1 lžička'],
-  ], 'Vejce rozšleháme se solí. Na másle nalijeme na pánev, přidáme nakrájenou papriku, šunku a sýr a přeložíme.'),
+  ], 'Vejce rozšleháme se solí. Na másle nalijeme na pánev, přidáme nakrájenou papriku, šunku a sýr a přeložíme. Zdravá varianta od Páji: jen 3 bílky s kořením, kvalitní šunka a ideálně špenát a žampiony.'),
 
   // Snídaně od Páji
   r('Ranní ovesné vločky přes noc', '🥣', 'breakfast', 'Bez vaření', [
@@ -62,7 +62,7 @@ const MealsList = [
   ], 'Rozmícháme bílky, ořechové máslo, banán a skořici, podle potřeby přidáme kypřící prášek. Palačinky nebo lívanečky děláme na pánvi s malým množstvím oleje.'),
   r('Cottage lívance s ovesnými vločkami', '🥞', 'breakfast', 'Mixování + smažení', [
     'Cottage sýr|200 g', 'Vejce|2 ks', 'Ovesné vločky|6 lžic', 'Kakao|1 lžíce', 'Voda|2 lžíce', 'Sůl|1 špetka', 'Olej|1 lžíce',
-  ], 'Cottage, vejce a ovesné vločky rozmixujeme na těsto (kdo chce, přidá kakao, případně trochu vody a sůl). Těsto může být slané i sladké. Smažíme na pánvi jako lívance nebo placky.'),
+  ], 'Cottage, vejce a ovesné vločky rozmixujeme na těsto (kdo chce, přidá kakao, případně trochu vody a sůl). Těsto může být slané i sladké. Smažíme na pánvi jako lívance nebo placky. Na placky: 200 g cottage, 2 vejce, 4 lžíce vloček, 50 ml vody a sůl.'),
   r('Kakaové lívance s cottage', '🍫', 'breakfast', 'Mixování + smažení', [
     'Vejce|2 ks', 'Cottage sýr|200 g', 'Ovesné vločky|4 lžíce', 'Prášek do pečiva|1 lžička', 'Kakao|1 lžíce', 'Med|1 lžíce', 'Borůvky|50 g', 'Olej|1 lžíce',
   ], 'Vejce, cottage, vločky, prášek do pečiva a kakao rozmixujeme. Lívance smažíme na pánvi. Lépe chutnají s medem nebo něčím sladkým, navrch můžeme dát borůvky.'),
@@ -75,24 +75,15 @@ const MealsList = [
   r('Jogurtové palačinky', '🥞', 'breakfast', 'Smažení', [
     'Bílý řecký jogurt|150 g', 'Vejce|2 ks', 'Mléko|100 ml', 'Mouka špaldová|80 g', 'Protein|1 odměrka', 'Olej|1 lžíce',
   ], 'Smícháme bílý řecký jogurt, vejce, mléko a mouku (ideálně špaldovou). Můžeme přidat sladidlo nebo protein. Palačinky smažíme na pánvi.'),
-  r('Cottage placky s vločkami', '🥞', 'breakfast', 'Mixování + smažení', [
-    'Cottage sýr|200 g', 'Vejce|2 ks', 'Ovesné vločky|4 lžíce', 'Voda|50 ml', 'Sůl|1 špetka', 'Olej|1 lžíce',
-  ], 'Cottage, vejce, vločky, vodu a sůl smícháme a rozmixujeme na těsto. Placky smažíme na pánvi.'),
-  r('Jogurt s ovocem', '🥛', 'breakfast', 'Bez vaření', [
-    'Bílý jogurt 0 %|300 g', 'Ovoce dle sezóny|200 g',
-  ], 'Jogurt (ideálně s 0 % tuku) podáváme s čerstvým ovocem.'),
   r('Vaječný muffin z bílků', '🧁', 'breakfast', 'Pečení', [
     'Vaječné bílky|6 ks', 'Šunka|4 plátky', 'Špenát baby|1 hrst', 'Paprika|½ ks', 'Eidam strouhaný|50 g', 'Sůl, pepř|dle chuti',
-  ], 'Do formiček na muffiny dáme nakrájenou šunku, zeleninu a špenát, zalijeme bílky a navrch posypeme sýrem. Zapékáme v troubě dozlatova.'),
+  ], 'Do formiček na muffiny dáme nakrájenou šunku, zeleninu a špenát, zalijeme bílky a navrch posypeme sýrem. Zapékáme v troubě dozlatova. Stejně se dá upéct i jako slaný koláč ve větší formě – hodí se i na svačinu.'),
   r('Shake z Originu', '🥤', 'breakfast', 'Mixování', [
     'Protein Origin|3 odměrky', 'Voda|0,2 l', 'Ovoce|1 hrst',
   ], 'Do mixéru dáme 0,2 l vody, 3 odměrky proteinu a kousek ovoce a vše rozmixujeme.'),
   r('Dýňový koláč z mikrovlnky', '🎃', 'breakfast', 'Pečení', [
     'Protein Origin vanilkový|3 odměrky', 'Dýně upečená|50 g', 'Skořice|1 lžička', 'Vaječné bílky|3 ks', 'Med|1 lžička',
   ], 'Rozmícháme 3 odměrky vanilkového proteinu, 50 g upečené dýně, skořici, 3 bílky a med. Těsto dáme do skleněné mísy a necháme asi 5 minut péct v mikrovlnce.'),
-  r('Omeleta z bílků se šunkou', '🍳', 'breakfast', 'Smažení', [
-    'Vaječné bílky|3 ks', 'Kvalitní šunka|4 plátky', 'Špenát baby|1 hrst', 'Žampiony|100 g', 'Sůl, pepř|dle chuti',
-  ], 'Na pánev dáme 3 bílky a koření, přidáme kvalitní šunku a další přísady, ideálně špenát a žampiony.'),
   r('Míchaná vajíčka z bílků se žampiony', '🍳', 'breakfast', 'Smažení', [
     'Žampiony|200 g', 'Cibule|½ ks', 'Vaječné bílky|3 ks', 'Kurkuma|½ lžičky', 'Sůl, pepř|dle chuti', 'Zelenina k podávání|1 hrst',
   ], 'Osmahneme žampiony, případně i cibuli. Přidáme koření, ideálně kurkumu, sůl a pepř. Poté přidáme 3 bílky a promícháme. Vhodná je bokem zelenina.'),
@@ -101,16 +92,13 @@ const MealsList = [
   ], 'Jablko, vločky, vejce a mléko rozmixujeme na husté těsto. Lépe se hodí malé lívanečky než palačinky. Smažíme na pánvi.'),
   r('Cottage wrap na plechu', '🌯', 'breakfast', 'Mixování + pečení', [
     'Cottage sýr|200 g', 'Vejce|2 ks', 'Ovesné vločky|3 lžíce', 'Eidam strouhaný|50 g', 'Sůl, pepř|dle chuti',
-  ], 'Rozmixujeme cottage, vejce a koření (případně i pár lžic vloček). Těsto rozetřeme na plech s pečicím papírem, přidáme sýr a upečeme. Můžeme použít i na pánvi jako palačinky nebo jako základ pizzy. Plníme dle chuti.'),
+  ], 'Rozmixujeme cottage, vejce a koření (případně i pár lžic vloček, česnek nebo bylinky – na 1 balení cottage 2 vejce). Těsto rozetřeme na plech s pečicím papírem, přidáme sýr a upečeme. Můžeme použít i na pánvi jako palačinky nebo jako základ pizzy. Plníme dle chuti.'),
   r('Cottage palačinky', '🥞', 'breakfast', 'Mixování + smažení', [
     'Cottage sýr|200 g', 'Vejce|1 ks', 'Mouka hladká|2 lžíce', 'Voda|100 ml', 'Sůl, koření|dle chuti', 'Olej|1 lžíce',
   ], 'Rozmixujeme 200 g cottage, 1 vejce, trochu mouky, 100 ml vody, špetku soli a další koření. Palačinky smažíme na pánvi.'),
   r('Míchaná vajíčka s cottage', '🍳', 'breakfast', 'Smažení', [
     'Vejce|4 ks', 'Cottage sýr|100 g', 'Sůl, pepř|dle chuti', 'Máslo|1 lžička',
   ], 'Vejce rozmixujeme s cottage a pomalu míchaná vajíčka děláme na pánvi.'),
-  r('Tortilla s vejci', '🌯', 'breakfast', 'Smažení', [
-    'Tortilla pšeničná|2 ks', 'Vejce|4 ks', 'Sůl, pepř|dle chuti', 'Olej|1 lžíce', 'Zelenina, šunka, sýr|dle chuti',
-  ], 'Uděláme míchaná vajíčka (nebo jedno smažené vejce) a dáme je do tortilly. Přidáme podle chuti, co chceme, a zabalíme.'),
   r('Sýrová vajíčka se šunkou', '🧀', 'breakfast', 'Smažení', [
     'Eidam strouhaný|80 g', 'Šunka|4 plátky', 'Vejce|2 ks', 'Olej|1 lžička',
   ], 'Na pánvi roztavíme sýr, na něj položíme šunku a uděláme na ní volská oka.'),
@@ -132,8 +120,8 @@ const MealsList = [
     ['Hovězí maso na stroganov', '300 g'], ['Brokolice', '300 g'], ['Vaječné nudle', '200 g'], ['Sójová omáčka', '3 lžíce'], ['Česnek', '2 stroužky'],
   ], 'Nudle uvaříme. Maso prudce osmahneme, přidáme brokolici a česnek a podusíme. Smícháme s nudlemi a dochutíme sójovou omáčkou.'),
   r('Kuřecí křídla / paličky s přílohou', '🍗', 'lunch', 'Pečení', [
-    ['Kuřecí paličky', '600 g'], ['Brambory', '500 g'], ['Paprika sladká mletá', '2 lžičky'], ['Česnek', '2 stroužky'], ['Olej', '2 lžíce'],
-  ], 'Maso okořeníme paprikou, česnekem a olejem. Spolu s brambory pečeme při 200 °C asi 45 minut dozlatova.'),
+    ['Kuřecí paličky nebo křídla', '600 g'], ['Brambory', '500 g'], ['Paprika sladká mletá', '2 lžičky'], ['Pepř', 'dle chuti'], ['Česnek granulovaný', '1 lžička'], ['Parmezán strouhaný', '40 g'], ['Olej', '2 lžíce'],
+  ], 'Maso obalíme v paprice, pepři, česneku, parmezánu a oleji (Pájino obalení). Děláme ve fritéze, nebo spolu s brambory pečeme na plechu při 200 °C asi 45 minut dozlatova.'),
   r('Kuře s rýží', '🍚', 'lunch', 'Vaření', [
     ['Kuřecí prsa', '300 g'], ['Rýže jasmínová', '150 g'], ['Mrkev', '1 ks'], ['Hrášek mražený', '100 g'], ['Olej', '1 lžíce'],
   ], 'Rýži uvaříme. Kuřecí maso nakrájené na kostky orestujeme s mrkví, přidáme hrášek a podusíme. Podáváme s rýží.'),
@@ -205,9 +193,6 @@ const MealsList = [
   r('Pizza tortilla', '🍕', 'lunch', 'Pečení', [
     'Tortilla pšeničná|2 ks', 'Eidam strouhaný|100 g', 'Kečup|3 lžíce', 'Šunka|80 g', 'Koření na pizzu|dle chuti',
   ], 'Na tortillu dáme sýr, kečup, koření, šunku a cokoliv dalšího, přiklopíme druhou tortillou a pečeme v troubě nebo ve fritéze.'),
-  r('Slané palačinky', '🥞', 'lunch', 'Smažení', [
-    'Mouka hladká|100 g', 'Mléko|200 ml', 'Vejce|2 ks', 'Sůl|1 špetka', 'Slané přísady (šunka, sýr, zelenina)|dle chuti', 'Olej|1 lžíce',
-  ], 'Připravíme těsto z mouky, mléka a vajec a přidáme slané ingredience. Buď smažíme rovnou na pánvi, nebo zapečeme ve vaflovači.'),
   r('Brokolicové placky', '🥦', 'lunch', 'Vaření + smažení', [
     'Brokolice|400 g', 'Vejce|2 ks', 'Eidam strouhaný|80 g', 'Kukuřičný škrob|2 lžíce', 'Šunka|50 g', 'Sůl, pepř|dle chuti', 'Olej|2 lžíce',
   ], 'Brokolici uvaříme, přidáme vejce, sýr, škrob, koření a klidně i šunku. Placky smažíme na pánvi.'),
@@ -234,7 +219,7 @@ const MealsList = [
   ], 'Květák nakrájíme na plátky, přidáme olej a koření a můžeme přihodit i sýr. Dáme zapéct.'),
   r('Wrap z červené čočky nebo quinoy', '🌯', 'lunch', 'Mixování + smažení', [
     'Červená čočka|150 g', 'Voda|200 ml', 'Sůl, koření|dle chuti', 'Maso a zelenina na plnění|dle chuti',
-  ], 'Čočku (nebo quinou) necháme přes noc namočenou ve vodě, poté rozmixujeme, přidáme koření a máme těsto. Pečeme na pánvi jako tortillu a plníme masem, zeleninou a podobně.'),
+  ], 'Čočku (nebo quinou) necháme přes noc namočenou ve vodě, scedíme, rozmixujeme s čerstvou vodou a kořením a máme těsto. Pečeme na pánvi jako tortillu (hodí se i samotná jako pečivo) a plníme masem, zeleninou a podobně.'),
   r('Zeleninový koláč', '🥧', 'lunch', 'Pečení', [
     'Cuketa|1 ks', 'Mrkev|2 ks', 'Brambory|2 ks', 'Mouka hladká|3 lžíce', 'Vejce|2 ks', 'Eidam strouhaný|100 g', 'Koření|dle chuti', 'Šunka|50 g',
   ], 'Nastrouháme cuketu, mrkev a brambory (může být i brokolice, šunka a podobně). Přidáme mouku, vejce, sýr a koření a zapečeme v troubě. Navrch můžeme poté přidat sýr. Zapékáme buď v koláčové míse, nebo děláme na pánvi jako tortillu.'),
@@ -277,9 +262,6 @@ const MealsList = [
   r('Bramborový wrap', '🥔', 'lunch', 'Pečení', [
     'Brambory|3 ks', 'Olej|1 lžíce', 'Eidam strouhaný|60 g', 'Koření|dle chuti',
   ], 'Brambory nakrájíme na tenká kolečka a vyskládáme je přes sebe na plech do tvaru wrapu. Dáme na ně koření, olej a případně sýr. Zapečeme a pak použijeme jako pečivo.'),
-  r('Kuřecí kousky a křídla ve fritéze', '🍗', 'lunch', 'Fritéza', [
-    'Kuřecí křídla nebo kousky|600 g', 'Paprika sladká mletá|2 lžičky', 'Pepř|dle chuti', 'Česnek granulovaný|1 lžička', 'Parmezán strouhaný|40 g', 'Olej|1 lžíce',
-  ], 'Maso obalíme v papričce, pepři, česneku, parmezánu a oleji. Děláme ve fritéze nebo na plechu.'),
   r('Kuřecí stehna ve fritéze', '🍗', 'lunch', 'Fritéza', [
     'Kuřecí stehna|600 g', 'Sójová omáčka|3 lžíce', 'Koření na kuře|1 lžíce', 'Citron|1 ks',
   ], 'Stehna ze stran nařežeme a naložíme do koření a sójové omáčky. Pak je dáme do fritézy a navrch položíme plátek citronu.'),
@@ -360,18 +342,12 @@ const MealsList = [
   r('Housky z cizrny', '🫓', 'snack', 'Pečení', [
     'Cizrna sterilovaná|1 plechovka', 'Vejce|2 ks', 'Kypřící prášek|1 lžička', 'Olej|1 lžíce', 'Oregano|1 lžička', 'Sůl, pepř|dle chuti', 'Semínka|volitelně',
   ], 'Smícháme cizrnu, vejce, kypřící prášek, sůl, pepř, trochu oleje a oregano. Na 1 plechovku cizrny stačí 2 vejce a vyjde asi 5 košíčků. Můžeme přidat semínka. Dáme do malých misek a zapečeme. Dáme-li méně těsta a necháme déle péct, nebudou tolik vláčné.'),
-  r('Tortilla z cottage sýru', '🌯', 'snack', 'Pečení', [
-    'Cottage sýr|1 balení', 'Vejce|2 ks', 'Česnek|volitelně', 'Bylinky|volitelně', 'Sůl|dle chuti',
-  ], 'Rozmixujeme 1 balení cottage a 2 vejce, můžeme přidat česnek a bylinky. Dáme na pečicí papír a pečeme v troubě.'),
   r('Tortilla z cizrny', '🌯', 'snack', 'Mixování + smažení', [
     'Cizrna suchá|200 g', 'Voda|300 ml', 'Sůl, pepř|dle chuti', 'Česnek|1 stroužek', 'Olej|1 lžíce',
   ], 'Cizrnu dáme do mísy a zalijeme vodou (poměr 2:3), přidáme sůl, pepř a česnek. Necháme nasáknout 6 hodin. Pak rozmixujeme a děláme na pánvi.'),
   r('Špenátová tortilla (wrap)', '🥬', 'snack', 'Mixování + smažení', [
     'Špenát baby|150 g', 'Vejce|3 ks', 'Sůl, koření|dle chuti', 'Olej|1 lžíce', 'Šunka, sýr, zelenina|dle chuti',
   ], 'Čerstvý baby špenát rozmixujeme s vejci a kořením. Děláme na pánvi. Dovnitř se hodí sýr, šunka a zelenina.'),
-  r('Tortilla z červené čočky', '🌯', 'snack', 'Mixování + smažení', [
-    'Červená čočka|200 g', 'Voda|200 ml', 'Sůl, koření|dle chuti', 'Olej|1 lžíce',
-  ], 'Červenou čočku namočíme přes noc a scedíme. Rozmixujeme s čerstvou vodou a kořením. Děláme na pánvi.'),
   r('Housky z červené čočky', '🫓', 'snack', 'Pečení', [
     'Červená čočka|300 g', 'Sůl, pepř|dle chuti', 'Kypřící prášek|1 lžička', 'Semínka|2 lžíce',
   ], 'Červenou čočku (300 g) necháme namočit alespoň 3 hodiny. Smícháme se solí, pepřem, kypřícím práškem a libovolnými semínky a dáme do formiček do trouby.'),
@@ -401,9 +377,6 @@ const MealsList = [
   ], 'Mletá lněná semínka smícháme s vejci, kypřícím práškem, solí a vodou a upečeme. Podrobný postup: https://www.facebook.com/reel/1412679723764778'),
   r('Kyselé okurky', '🥒', 'snack', 'Bez vaření', ['Kyselé okurky|1 sklenice'], 'Okurky vyndáme ze sklenice a podáváme jako lehkou svačinu.'),
   r('Kvalitní šunka', '🥓', 'snack', 'Bez vaření', ['Šunka kvalitní|100 g'], 'Plátky kvalitní šunky podáváme samotné nebo se zeleninou.'),
-  r('Slaný koláč z bílků, šunky a zeleniny', '🥧', 'snack', 'Pečení', [
-    'Vaječné bílky|6 ks', 'Šunka|80 g', 'Zelenina dle chuti|200 g', 'Sůl, pepř|dle chuti',
-  ], 'Do formy dáme nakrájenou šunku a zeleninu, zalijeme bílky s kořením a zapečeme v troubě.'),
   r('Mandle blanšírované', '🌰', 'snack', 'Bez vaření', ['Mandle blanšírované|50 g'], 'Hrst blanšírovaných mandlí podáváme jako rychlou svačinu.'),
   r('Oříšky nesolené', '🥜', 'snack', 'Bez vaření', ['Oříšky nesolené|50 g'], 'Hrst nesolených oříšků podáváme jako rychlou svačinu.'),
   r('Zelenina na chroupání', '🥕', 'snack', 'Bez vaření', ['Mrkev|1 ks', 'Okurka|1 ks', 'Paprika|1 ks'], 'Zeleninu omyjeme, nakrájíme na tyčinky a podáváme samotnou nebo s dipem.'),
@@ -442,7 +415,7 @@ const MealsList = [
   r('Čočková polévka', '🥣', 'dinner', 'Vaření', [
     'Čočka|150 g', 'Cibule|1 ks', 'Mrkev|1 ks', 'Brambory|2 ks', 'Uzené maso nebo slanina|100 g', 'Voda nebo vývar|1 l', 'Sůl, pepř, majoránka|dle chuti',
   ], 'Osmahneme cibuli, mrkev, brambory a nějaké maso. Přidáme čočku, zalijeme vodou nebo vývarem a necháme změknout. Dokořeníme.'),
-  r('Polévka s kuřecím masem a zeleninou', '🍲', 'dinner', 'Vaření', [
+  r('Kuřecí polévka se zeleninou', '🍲', 'dinner', 'Vaření', [
     'Cibule|1 ks', 'Kuřecí maso|250 g', 'Celer|100 g', 'Petržel kořenová|1 ks', 'Mrkev|2 ks', 'Česnek|2 stroužky', 'Vývar|1 l', 'Sůl, pepř|dle chuti',
   ], 'Osmahneme cibuli, maso, celer, petržel, mrkev a česnek. Necháme změknout a přidáme vývar.'),
   r('Hovězí polévka', '🍲', 'dinner', 'Vaření', [
@@ -466,7 +439,7 @@ const MealsList = [
   r('Brokolicová polévka se smetanou', '🥦', 'dinner', 'Vaření + mixování', [
     'Brokolice|500 g', 'Česnek|2 stroužky', 'Cibule|1 ks', 'Masox nebo bujón|1 kostka', 'Smetana na vaření|100 ml', 'Voda|600 ml', 'Sůl, pepř|dle chuti',
   ], 'Osmažíme společně česnek, cibuli a brokolicové košťály. Pak přidáme růžičky brokolice a masox, zalijeme vodou, uvaříme a rozmixujeme. Nakonec přidáme smetanu.'),
-  r('Zeleninová polévka s kuřecím masem', '🍲', 'dinner', 'Vaření + mixování', [
+  r('Krémová zeleninová polévka s trhaným kuřetem', '🍲', 'dinner', 'Vaření + mixování', [
     'Brambory|3 ks', 'Cibule|1 ks', 'Mrkev|2 ks', 'Paprika|1 ks', 'Kuřecí prsa|300 g', 'Voda|1 l', 'Koření|dle chuti',
   ], 'Do hrnce dáme vařit nakrájené kusy brambor, cibule, mrkve a papriky (mohou být i rajčata nebo jiná zelenina). Navrch dáme kuřecí prsa vcelku, přidáme koření a necháme vše změknout. Kuře vyndáme a uděláme z něj trhané maso. Obsah hrnce rozmixujeme a přidáme zpět maso. Video: https://www.facebook.com/reel/1071509395624224/'),
   r('Vajíčková polévka', '🥚', 'dinner', 'Vaření', [
