@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useHousehold } from '../context/HouseholdContext';
-import { useRecipeImage } from '../components/Thumb';
+import { useRecipeImageFull } from '../components/Thumb';
 import BottomSheet from '../components/BottomSheet';
 import { Icon } from '../components/ui';
 import { dayInfo } from '../lib/dates';
@@ -14,7 +14,7 @@ export default function RecipeDetail() {
   const navigate = useNavigate();
   const { recipes, horizon, todayKey, plan, setMeal } = useHousehold();
   const r = recipes[id];
-  const img = useRecipeImage(id);
+  const { src: img, loading: imgLoading } = useRecipeImageFull(id);
   const [sheet, setSheet] = useState(false);
   const closeSheet = useCallback(() => setSheet(false), []);
   const isDesktop = useIsDesktop();
@@ -88,7 +88,7 @@ export default function RecipeDetail() {
         </button>
         <div className="detail-d__grid">
           <div className="detail-d__img">
-            {img ? <img src={img} alt={r.name} /> : <span style={{ fontSize: 140 }}>{r.emoji || '🍽️'}</span>}
+            {img ? <img src={img} alt={r.name} className={imgLoading ? 'img-placeholder' : undefined} /> : <span style={{ fontSize: 140 }}>{r.emoji || '🍽️'}</span>}
           </div>
           <div className="stack" style={{ gap: 28, paddingTop: 8 }}>
             <div className="stack" style={{ gap: 14 }}>
@@ -135,7 +135,7 @@ export default function RecipeDetail() {
   return (
     <div className="detail">
       <div className="detail__hero">
-        {img ? <img src={img} alt={r.name} /> : <span className="detail__emoji">{r.emoji || '🍽️'}</span>}
+        {img ? <img src={img} alt={r.name} className={imgLoading ? 'img-placeholder' : undefined} /> : <span className="detail__emoji">{r.emoji || '🍽️'}</span>}
         <div className="detail__bar">
           <button type="button" className="glass-btn" onClick={back} aria-label="Zpět">
             <Icon name="arrow_back" size={22} />

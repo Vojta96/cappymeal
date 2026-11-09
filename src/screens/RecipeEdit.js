@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useHousehold } from '../context/HouseholdContext';
-import { useRecipeImage } from '../components/Thumb';
+import { useRecipeImageFull } from '../components/Thumb';
 import { Icon, Spinner } from '../components/ui';
 import { SLOTS } from '../lib/meals';
 import { resizeImage } from '../lib/image';
@@ -31,7 +31,7 @@ export default function RecipeEdit() {
   const navigate = useNavigate();
   const { recipes, saveRecipe, deleteRecipe } = useHousehold();
   const existing = id ? recipes[id] : null;
-  const currentImg = useRecipeImage(id);
+  const { src: currentImg, loading: currentLoading } = useRecipeImageFull(id);
 
   const [draft, setDraft] = useState(() =>
     existing
@@ -173,7 +173,7 @@ export default function RecipeEdit() {
             <Spinner />
           ) : shownImg ? (
             <>
-              <img src={shownImg} alt="" />
+              <img src={shownImg} alt="" className={!photo && currentLoading ? 'img-placeholder' : undefined} />
               <span className="edit__photo-change">
                 <Icon name="photo_camera" size={18} />
                 Změnit fotku

@@ -181,6 +181,30 @@ test('photos: new top-level path, legacy path delete-only', async () => {
   }));
 });
 
+test('thumbs: members only, JPEG data URL < 45000 chars, delete ok', async () => {
+  const bob = db('bob');
+  const ok = `data:image/jpeg;base64,${'A'.repeat(30000)}`;
+  await assertSucceeds(set(ref(bob, `householdThumbs/${HID}/r1`), ok));
+  await assertSucceeds(get(ref(bob, `householdThumbs/${HID}/r1`)));
+  await assertFails(get(ref(db('eve'), `householdThumbs/${HID}/r1`)));
+  await assertFails(set(ref(db('eve'), `householdThumbs/${HID}/r1`), ok));
+  await assertFails(set(ref(db('alice'), `householdThumbs/${OTHER}/r1`), ok));
+  await assertFails(set(ref(bob, `householdThumbs/${HID}/r1`), 'data:text/html;base64,AAAA'));
+  await assertFails(set(ref(bob, `householdThumbs/${HID}/r1`), `data:image/jpeg;base64,${'A'.repeat(45000)}`));
+  await assertFails(set(ref(bob, `householdThumbs/${HID}/r1`), 42));
+  // photo + thumb saved / removed together in one multi-path update
+  await assertSucceeds(update(ref(bob), {
+    [`householdPhotos/${HID}/r2`]: 'data:image/jpeg;base64,AAAA',
+    [`householdThumbs/${HID}/r2`]: 'data:image/jpeg;base64,AAAA',
+  }));
+  await assertSucceeds(update(ref(bob), {
+    [`householdPhotos/${HID}/r2`]: null,
+    [`householdThumbs/${HID}/r2`]: null,
+    [`householdThumbs/${HID}/r1`]: null,
+  }));
+  assert.strictEqual((await get(ref(bob, `householdThumbs/${HID}/r1`))).exists(), false);
+});
+
 test('member replaces all recipes in one multi-path update (delete + photos + plan + new set)', async () => {
   const bob = db('bob');
   await assertSucceeds(set(ref(bob, `households/${HID}/plan/${today}/lunch`), 'r1'));

@@ -1192,3 +1192,9 @@ textarea.input {
     bottom: 32px;
   }
 }
+
+/* Low-res thumbnail shown while the full photo loads. */
+.img-placeholder {
+  filter: blur(10px);
+  transform: scale(1.06);
+}

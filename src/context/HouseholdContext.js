@@ -26,6 +26,8 @@ import { DEFAULT_SETTINGS, ensureHouseholdMeta, seedRecipeRecords } from '../ser
 import { capitalizeFirst } from '../lib/text';
 import { prefUpdates } from '../lib/shop';
 import { leadShift } from '../lib/checkout';
+import { makeThumb } from '../lib/image';
+import { getCachedThumb, putCachedThumb, pruneThumbs, thumbCacheKey } from '../lib/photoCache';
 
 export const HouseholdContext = createContext(null);
 
@@ -37,6 +39,9 @@ const SUBTREES = [
 // Recipe photos: householdPhotos/{hid}/{rid}; households/{hid}/photos/{rid} is the read-only legacy location.
 const photoPath = (hid, rid) => `householdPhotos/${hid}/${rid}`;
 const legacyPhotoPath = (hid, rid) => `households/${hid}/photos/${rid}`;
+// Thumbnails (320 px, < 40 000 chars) for every list / small context.
+const thumbPath = (hid, rid) => `householdThumbs/${hid}/${rid}`;
+const FULL_PHOTO_LIMIT = 60; // full photos kept in memory (LRU)
 const clip = (v, max) => String(v || '').trim().slice(0, max);
 
 function useTodayKey() {
@@ -59,8 +64,13 @@ export function HouseholdProvider({ hid, children }) {
   const [data, setData] = useState({});
   const [loaded, setLoaded] = useState({});
   const [activity, setActivity] = useState([]);
-  const [photos, setPhotos] = useState({}); // cacheKey -> dataURL | null
+  const [photos, setPhotos] = useState({}); // "variant:rid:updatedAt" -> dataURL | null
   const photoRequests = useRef(new Set());
+  const fullOrder = useRef([]); // LRU order of full-photo keys
+  const fullLoads = useRef(new Map()); // rid -> Promise<dataURL|null> (shared by thumb fallback + full)
+  const thumbMigrations = useRef(new Map()); // rid -> Promise (once per session)
+  const recipesRef = useRef({});
+  const pruned = useRef(false);
   const todayKey = useTodayKey();
 
   // One subscription per sub-tree.
@@ -122,33 +132,127 @@ export function HouseholdProvider({ hid, children }) {
   const pendingDays = useMemo(() => horizon.filter((k) => statusOf(k) === 'pending'), [horizon, statusOf]);
 
   // ---------- photos (lazy, cached) ----------
-  const photoKey = (rid, r) => `${rid}:${(r && r.updatedAt) || 0}`;
+  // Thumbs: memory -> IndexedDB -> RTDB (householdThumbs). Full photos: memory (LRU) -> RTDB, never persisted.
+  recipesRef.current = recipes;
+  const photoKey = (variant, rid, r) => `${variant}:${rid}:${(r && r.updatedAt) || 0}`;
 
-  const requestPhoto = useCallback(
+  const putPhoto = useCallback((k, value) => {
+    let evicted = [];
+    if (k.startsWith('full:')) {
+      const order = fullOrder.current.filter((x) => x !== k);
+      order.push(k);
+      evicted = order.splice(0, Math.max(0, order.length - FULL_PHOTO_LIMIT));
+      fullOrder.current = order;
+    }
+    setPhotos((p) => {
+      const next = { ...p, [k]: value };
+      evicted.forEach((e) => delete next[e]);
+      return next;
+    });
+    evicted.forEach((e) => photoRequests.current.delete(e));
+  }, []);
+
+  const loadFull = useCallback(
     (rid) => {
+      const cur = fullLoads.current.get(rid);
+      if (cur) return cur;
+      const p = get(ref(db, photoPath(hid, rid)))
+        .then((snap) => (snap.exists() ? snap : get(ref(db, legacyPhotoPath(hid, rid)))))
+        .then((snap) => snap.val() || null);
+      fullLoads.current.set(rid, p);
+      const clear = () => {
+        if (fullLoads.current.get(rid) === p) fullLoads.current.delete(rid);
+      };
+      p.then(clear, clear); // the shared promise lives only while the request is in flight
+      return p;
+    },
+    [hid]
+  );
+
+  // Builds the thumb from a full data URL and stores it (best effort, once per rid and session).
+  const migrateThumb = useCallback(
+    (rid, fullUrl) => {
+      const cur = thumbMigrations.current.get(rid);
+      if (cur) return cur;
+      const p = makeThumb(fullUrl)
+        .then(async (thumb) => {
+          const r = recipesRef.current[rid];
+          putPhoto(photoKey('thumb', rid, r), thumb);
+          putCachedThumb(thumbCacheKey(hid, rid, r && r.updatedAt), thumb);
+          await set(ref(db, thumbPath(hid, rid)), thumb).catch(() => {});
+          return thumb;
+        })
+        .catch(() => null);
+      thumbMigrations.current.set(rid, p);
+      return p;
+    },
+    [hid, putPhoto]
+  );
+
+  // variant: 'thumb' (lists, cached on the device) | 'full' (detail hero / editor, memory only)
+  const requestPhoto = useCallback(
+    (rid, variant = 'full') => {
       const r = recipes[rid];
       if (!r || !r.hasPhoto || !hid) return;
-      const k = photoKey(rid, r);
+      const k = photoKey(variant, rid, r);
       if (photoRequests.current.has(k)) return;
       photoRequests.current.add(k);
-      get(ref(db, photoPath(hid, rid)))
-        .then((snap) => (snap.exists() ? snap : get(ref(db, legacyPhotoPath(hid, rid)))))
-        .then((snap) => setPhotos((p) => ({ ...p, [k]: snap.val() || null })))
-        .catch(() => {
-          photoRequests.current.delete(k);
-        });
+      const fail = () => {
+        photoRequests.current.delete(k);
+      };
+      if (variant === 'thumb') {
+        const ck = thumbCacheKey(hid, rid, r.updatedAt);
+        getCachedThumb(ck)
+          .then((cached) => {
+            if (cached) {
+              putPhoto(k, cached);
+              return null;
+            }
+            return get(ref(db, thumbPath(hid, rid))).then((snap) => {
+              if (snap.exists()) {
+                putPhoto(k, snap.val());
+                putCachedThumb(ck, snap.val());
+                return null;
+              }
+              // No thumb yet (photo saved before thumbs existed): load the full photo once, build + save it.
+              return loadFull(rid)
+                .then((full) => (full ? migrateThumb(rid, full) : null))
+                .then((thumb) => putPhoto(k, thumb || null));
+            });
+          })
+          .catch(fail);
+        return;
+      }
+      loadFull(rid)
+        .then((full) => {
+          putPhoto(k, full);
+          if (!full || thumbMigrations.current.has(rid)) return null;
+          // Photo without a thumb: check once, build it from the full photo when missing.
+          return get(ref(db, thumbPath(hid, rid))).then((snap) => (snap.exists() ? null : migrateThumb(rid, full)));
+        })
+        .catch(fail);
     },
-    [recipes, hid]
+    [recipes, hid, putPhoto, loadFull, migrateThumb]
   );
 
   const photoFor = useCallback(
-    (rid) => {
+    (rid, variant = 'full') => {
       const r = recipes[rid];
       if (!r || !r.hasPhoto) return undefined;
-      return photos[photoKey(rid, r)];
+      return photos[photoKey(variant, rid, r)];
     },
     [recipes, photos]
   );
+
+  // Drop cached thumbs of deleted / outdated recipes (once per session).
+  useEffect(() => {
+    if (!hid || !loaded.recipes || pruned.current) return;
+    pruned.current = true;
+    const keep = new Set(
+      Object.entries(recipesRef.current).map(([rid, r]) => thumbCacheKey(hid, rid, r && r.updatedAt))
+    );
+    pruneThumbs(hid, keep);
+  }, [hid, loaded.recipes]);
 
   // ---------- actions ----------
   const base = `households/${hid}`;
@@ -224,14 +328,23 @@ export function HouseholdProvider({ hid, children }) {
         updatedAt: now,
       };
       const updates = { [`${base}/recipes/${rid}`]: recipe };
+      let thumb = null;
+      if (typeof photo === 'string') thumb = await makeThumb(photo).catch(() => null);
       if (typeof photo === 'string' || photo === null) {
         updates[photoPath(hid, rid)] = photo;
+        if (photo === null || thumb) updates[thumbPath(hid, rid)] = thumb;
         if (prev.hasPhoto) updates[legacyPhotoPath(hid, rid)] = null;
       }
       await update(ref(db), updates);
       if (typeof photo === 'string') {
-        setPhotos((p) => ({ ...p, [`${rid}:${now}`]: photo }));
-        photoRequests.current.add(`${rid}:${now}`);
+        putPhoto(`full:${rid}:${now}`, photo);
+        photoRequests.current.add(`full:${rid}:${now}`);
+        thumbMigrations.current.delete(rid);
+        if (thumb) {
+          putPhoto(`thumb:${rid}:${now}`, thumb);
+          photoRequests.current.add(`thumb:${rid}:${now}`);
+          putCachedThumb(thumbCacheKey(hid, rid, now), thumb);
+        }
       } else if (photo === undefined && hasPhoto) {
         // Move a legacy photo to the new location (best effort, never blocks the save).
         get(ref(db, photoPath(hid, rid)))
@@ -245,7 +358,7 @@ export function HouseholdProvider({ hid, children }) {
       logActivity('recipe', `${nickname} ${isNew ? 'přidal(a)' : 'upravil(a)'} recept ${recipe.name}`);
       return rid;
     },
-    [base, hid, recipes, uid, nickname, logActivity]
+    [base, hid, recipes, uid, nickname, logActivity, putPhoto]
   );
 
   const deleteRecipe = useCallback(
@@ -254,6 +367,7 @@ export function HouseholdProvider({ hid, children }) {
       const updates = { [`${base}/recipes/${rid}`]: null };
       if (r && r.hasPhoto) {
         updates[photoPath(hid, rid)] = null;
+        updates[thumbPath(hid, rid)] = null;
         updates[legacyPhotoPath(hid, rid)] = null;
       }
       // Remove upcoming plan references (past days are kept untouched).
@@ -276,6 +390,7 @@ export function HouseholdProvider({ hid, children }) {
     old.forEach((rid) => {
       updates[`${base}/recipes/${rid}`] = null;
       updates[photoPath(hid, rid)] = null;
+      updates[thumbPath(hid, rid)] = null;
       updates[legacyPhotoPath(hid, rid)] = null;
     });
     Object.entries(plan).forEach(([day, slots]) => {

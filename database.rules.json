@@ -40,6 +40,16 @@
       }
     },
 
+    "householdThumbs": {
+      "$hid": {
+        ".read": "auth != null && root.child('households').child($hid).child('members').child(auth.uid).exists()",
+        "$rid": {
+          ".write": "auth != null && root.child('households').child($hid).child('members').child(auth.uid).exists()",
+          ".validate": "newData.isString() && newData.val().beginsWith('data:image/jpeg;base64,') && newData.val().length < 45000"
+        }
+      }
+    },
+
     "households": {
       "$hid": {
         ".read": "auth != null && data.child('members').child(auth.uid).exists()",
