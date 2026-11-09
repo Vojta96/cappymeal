@@ -592,8 +592,9 @@ describe('desktop layout (>= 1024px)', () => {
     expect(document.querySelector('.plan-grid')).not.toBeNull();
     expect(screen.getAllByText(/Těstoviny Bolognese/).length).toBeGreaterThan(0);
     // Tomorrow's lunch: everyone else has the shared meal, Jana her own one.
-    expect(screen.getAllByText('Ostatní:').length).toBeGreaterThan(0);
-    expect(screen.getByText('Jana: Ovesná kaše')).toBeInTheDocument();
+    // Split slot: every meal gets its own compact card with the eater's name.
+    const compact = [...document.querySelectorAll('.plan-grid__compact')].map((el) => el.textContent);
+    expect(compact).toEqual(expect.arrayContaining([expect.stringContaining('OstatníTěstoviny Bolognese'), expect.stringContaining('JanaOvesná kaše')]));
   });
 
   test('mobile shell keeps the tab bar', () => {

@@ -322,11 +322,48 @@ export default function Plan() {
               {vis.map((d) => {
                 const entries = slotMeals(d.key, s.key);
                 const main = entries[0];
-                const rest = entries.slice(1);
+                // Several meals in one slot: compact cards (small thumb) so every meal and its eater stay readable.
+                const split = entries.length > 1;
                 return (
                   <div key={d.key} className="plan-grid__cell">
                     {main ? (
                       <div className="plan-grid__stack">
+                        {split &&
+                          entries.map((e) => (
+                            <div
+                              key={e.rid}
+                              className="plan-grid__compact"
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => navigate(`/recipes/${e.rid}`)}
+                              onKeyDown={(ev) => {
+                                if (ev.key === 'Enter') navigate(`/recipes/${e.rid}`);
+                              }}
+                            >
+                              <Thumb rid={e.rid} size={34} radius={9} emojiSize={18} />
+                              <div className="plan-grid__compact-body">
+                                {whoLabel(e) && (
+                                  <span className="plan-grid__compact-who">
+                                    <Icon name={e.shared ? 'groups' : 'person'} size={13} />
+                                    <span className="ellipsis">{whoLabel(e)}</span>
+                                  </span>
+                                )}
+                                <span className="plan-grid__compact-name">{recipes[e.rid].name}</span>
+                              </div>
+                              <button
+                                type="button"
+                                className="plan-grid__extra-x"
+                                aria-label={`Odebrat ${s.acc}${whoLabel(e) ? ` – ${whoLabel(e)}` : ''}`}
+                                onClick={(ev) => {
+                                  ev.stopPropagation();
+                                  askRemove(d.key, s.key, e.shared ? null : e.uids, whoLabel(e));
+                                }}
+                              >
+                                <Icon name="close" size={14} />
+                              </button>
+                            </div>
+                          ))}
+                        {!split && (
                         <div
                           className="plan-grid__meal"
                           role="button"
@@ -359,29 +396,7 @@ export default function Plan() {
                             <Icon name="close" size={17} />
                           </button>
                         </div>
-                        {rest.map((e) => (
-                          <div key={e.rid} className="plan-grid__extra">
-                            <button
-                              type="button"
-                              className="plan-grid__extra-main"
-                              onClick={() => navigate(`/recipes/${e.rid}`)}
-                            >
-                              <Icon name={e.shared ? 'groups' : 'person'} size={15} />
-                              <span className="ellipsis">
-                                {whoLabel(e) ? `${whoLabel(e)}: ` : ''}
-                                {recipes[e.rid].name}
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              className="plan-grid__extra-x"
-                              aria-label={`Odebrat ${s.acc} – ${whoLabel(e)}`}
-                              onClick={() => askRemove(d.key, s.key, e.shared ? null : e.uids, whoLabel(e))}
-                            >
-                              <Icon name="close" size={14} />
-                            </button>
-                          </div>
-                        ))}
+                        )}
                         {skipLine(d.key, s.key, true)}
                         <button
                           type="button"
