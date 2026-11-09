@@ -29,11 +29,32 @@ export function toCallError(e) {
   return new CallError(GENERIC[code] || (e && e.message) || GENERIC.unknown, code, reason || code);
 }
 
+// Read-only callables that are safe to repeat. A cold start of several functions at once can end
+// in 503 "unavailable" before the function even runs – retry those, never writes (fillCart, updates…).
+const RETRYABLE = new Set([
+  'rohlikStatus', 'rohlikMatch', 'rohlikCart', 'rohlikCheckout', 'rohlikTimeslots',
+  'rohlikCheckoutLink', 'rohlikDeliveryOptions', 'rohlikSyncOrders', 'ensureHouseholdMeta',
+]);
+const RETRY_CODES = new Set(['unavailable', 'deadline-exceeded']);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 export async function callFunction(name, data, timeout = 70000) {
-  try {
-    const res = await httpsCallable(functions, name, { timeout })(data);
-    return res.data;
-  } catch (e) {
-    throw toCallError(e);
+  const attempts = RETRYABLE.has(name) ? 3 : 1;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await httpsCallable(functions, name, { timeout })(data);
+      return res.data;
+    } catch (e) {
+      const code = String((e && e.code) || '').replace('functions/', '');
+      const reason = e && e.details && e.details.code;
+      if (i < attempts - 1 && !reason && RETRY_CODES.has(code)) {
+        // eslint-disable-next-line no-await-in-loop
+        await sleep(1500 * (i + 1));
+        continue; // eslint-disable-line no-continue
+      }
+      throw toCallError(e);
+    }
   }
+  throw toCallError({ code: 'unavailable' });
 }

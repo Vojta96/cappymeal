@@ -1198,3 +1198,17 @@ textarea.input {
   filter: blur(10px);
   transform: scale(1.06);
 }
+
+/* iPhone (viewport-fit=cover): an opaque strip under the status bar so scrolled content never
+   runs under the clock / Dynamic Island. Height is 0 where there is no safe area. */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--safe-top);
+  background: var(--bg);
+  z-index: 1000;
+  pointer-events: none;
+}
