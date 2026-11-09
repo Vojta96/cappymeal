@@ -8,7 +8,7 @@ import './cart.css';
 export const ROHLIK_URL = 'https://www.rohlik.cz/';
 
 export default function CartDone() {
-  const { horizon, statusOf, setOrderStatus } = useHousehold();
+  const { horizon, statusOf, setOrderStatus, clearOrder } = useHousehold();
   const location = useLocation();
   const navigate = useNavigate();
   const st = location.state || {};
@@ -28,6 +28,20 @@ export default function CartDone() {
     try {
       await setOrderStatus(days, 'ordered');
       navigate('/', { replace: true });
+    } catch (e) {
+      setBusy(false);
+      setError('Nepodařilo se uložit. Zkontrolujte připojení.');
+    }
+  };
+
+  /** The cart was emptied on Rohlík: put the days back to "Neobjednáno" (reminders stay on). */
+  const cancel = async () => {
+    if (!window.confirm('Vrátit tyto dny mezi neobjednané? Košík na Rohlíku tím neměníme.')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await Promise.all(days.map((d) => clearOrder(d)));
+      navigate('/cart', { replace: true });
     } catch (e) {
       setBusy(false);
       setError('Nepodařilo se uložit. Zkontrolujte připojení.');
@@ -84,6 +98,9 @@ export default function CartDone() {
           )}
         </button>
       </div>
+      <button type="button" className="link-btn done__cancel" onClick={cancel} disabled={busy}>
+        Košík jsem na Rohlíku zrušil – vrátit dny mezi neobjednané
+      </button>
     </div>
   );
 }

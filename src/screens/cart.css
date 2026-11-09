@@ -736,3 +736,10 @@
     border-radius: 16px;
   }
 }
+
+.done__cancel {
+  margin-top: 6px;
+  font-size: 13.5px;
+  text-align: center;
+  max-width: 320px;
+}
