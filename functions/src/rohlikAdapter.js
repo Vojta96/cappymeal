@@ -450,6 +450,57 @@ async function searchProducts(client, query, { onRaw, onDiag } = {}) {
   return parseProducts(res).slice(0, SEARCH_LIMIT);
 }
 
+/** Structure of a JSON value with all values masked (types only) – safe to log, no personal data. */
+function shapeOf(v, depth = 0) {
+  if (depth > 5) return '…';
+  if (Array.isArray(v)) return v.length ? [shapeOf(v[0], depth + 1), `×${v.length}`] : [];
+  if (v && typeof v === 'object') {
+    const o = {};
+    Object.keys(v).slice(0, 40).forEach((k) => { o[k] = shapeOf(v[k], depth + 1); });
+    return o;
+  }
+  return v === null ? 'null' : typeof v;
+}
+
+const INSPECT_TOOLS = [
+  'get_checkout', 'get_timeslots_checkout', 'get_user_addresses', 'fetch_orders', 'get_checkout_link', 'get_cart',
+];
+const SCHEMA_ONLY_TOOLS = [
+  'select_delivery_address_checkout', 'change_timeslot_checkout', 'reserve_timeslot', 'unreserve_timeslot',
+  'update_payment_method_checkout', 'change_checkout_packaging', 'toggle_delivery_note_checkout',
+  'update_courier_instructions_checkout', 'set_checkout_as_suborder', 'remove_cart_item', 'clear_cart', 'update_cart_item',
+];
+
+/**
+ * Diagnostics for building the checkout flow: logs input schemas of checkout tools and the masked
+ * structure (keys + types, never values) of read-only tool outputs. Never calls a mutating tool.
+ */
+async function inspectCheckoutTools(client, log) {
+  const tools = await listTools(client);
+  for (const name of SCHEMA_ONLY_TOOLS) {
+    const t = tools.find((x) => x.name === name);
+    if (t) log({ tool: name, schema: t.inputSchema || {}, description: String(t.description || '').slice(0, 600) });
+  }
+  for (const name of INSPECT_TOOLS) {
+    const t = tools.find((x) => x.name === name);
+    if (!t) continue;
+    const args = props(t).context ? { context: 'Zobrazení pokladny a termínů doručení v aplikaci CappyMeal.' } : {};
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const r = await client.callTool({ name, arguments: args }, undefined, { timeout: TIMEOUT_MS });
+      let shape = null;
+      const txt = resultText(r);
+      try { shape = shapeOf(JSON.parse(txt)); } catch (e) { shape = `text(${txt.length})`; }
+      log({
+        tool: name, schema: t.inputSchema || {}, description: String(t.description || '').slice(0, 600),
+        isError: !!r.isError, errorText: r.isError ? txt.slice(0, 400) : undefined, shape,
+      });
+    } catch (e) {
+      log({ tool: name, schema: t.inputSchema || {}, callError: (e && e.message) || '' });
+    }
+  }
+}
+
 async function addToCart(client, products) {
   const tools = await listTools(client);
   const tool = pickAddTool(tools);
@@ -479,5 +530,5 @@ async function addToCart(client, products) {
 module.exports = {
   pickSearchTool, pickAddTool, buildSearchArgs, buildAddCalls, parseProducts,
   normaliseProduct, rawProducts, describeKeys, simplifyQuery, MAX_VARIANTS, SEARCH_LIMIT, connect, listTools, searchProducts, addToCart,
-  fetchProductImages,
+  fetchProductImages, inspectCheckoutTools, shapeOf,
 };

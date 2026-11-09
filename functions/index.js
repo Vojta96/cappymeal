@@ -548,7 +548,15 @@ exports.rohlikStatus = onCall(ROHLIK, handle('rohlikStatus', async (request) => 
   return withClient(hid, async (client) => {
     const tools = await rohlik.listTools(client, { refresh: true });
     const out = { connected: true, emailMasked, toolCount: tools.length };
-    if (ownerSnap.val() === uid) out.tools = tools.map((t) => String(t.name));
+    if (ownerSnap.val() === uid) {
+      out.tools = tools.map((t) => String(t.name));
+      // TEMPORARY diagnostics for the checkout flow: schemas + masked output structure, read-only tools only.
+      try {
+        await rohlik.inspectCheckoutTools(client, (d) => console.info('rohlik inspect:', JSON.stringify(d).slice(0, 6000)));
+      } catch (e) {
+        console.warn('rohlik inspect failed:', (e && e.message) || '');
+      }
+    }
     return out;
   });
 }));
