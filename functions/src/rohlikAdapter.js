@@ -53,6 +53,7 @@ function buildSearchArgs(tool, query) {
     }
   }
   const args = { [key]: value };
+  if (findProp(tool, ['context'])) args.context = 'Hledání surovin pro naplánovaná jídla do nákupního košíku.';
   const lim = findProp(tool, ['limit', 'pageSize', 'page_size', 'max_results']);
   if (lim) args[lim] = SEARCH_LIMIT;
   return args;
@@ -337,6 +338,7 @@ function simplifyQuery(name) {
 // Tool lists are cached per MCP client (= per request and household), never shared
 // between households.
 const toolCache = new WeakMap();
+const probed = new WeakSet(); // one product-details probe per MCP session (diagnostics)
 
 const MCP_URL = 'https://mcp.rohlik.cz/mcp';
 const TIMEOUT_MS = 30000;
@@ -383,8 +385,25 @@ async function searchProducts(client, query, { onRaw, onDiag } = {}) {
       isError: !!res.isError,
       contentTypes: (res.content || []).map((c) => c.type),
       structured: res.structuredContent ? describeKeys(res.structuredContent) : null,
-      text: resultText(res).slice(0, 2500),
+      text: resultText(res).slice(0, 800),
     });
+    // One-off probe: does get_product_details return images? (diagnostics only)
+    const det = tools.find((t) => t.name === 'get_product_details');
+    const first = rawProducts(res)[0];
+    if (det && first && first.productId != null && !probed.has(client)) {
+      probed.add(client);
+      const dp = props(det);
+      const idK = findProp(det, ['productId', 'product_id', 'productIds', 'product_ids', 'ids', 'id']) || 'productId';
+      const idV = dp[idK] && dp[idK].type === 'array' ? [first.productId] : first.productId;
+      const dArgs = { [idK]: idV };
+      if (dp.context) dArgs.context = 'Zobrazení obrázku produktu v nákupním seznamu.';
+      try {
+        const dr = await client.callTool({ name: det.name, arguments: dArgs });
+        onDiag({ detailsSchema: JSON.stringify(det.inputSchema || {}).slice(0, 1200), detailsArgs: dArgs, isError: !!dr.isError, text: resultText(dr).slice(0, 3000) });
+      } catch (e) {
+        onDiag({ detailsSchema: JSON.stringify(det.inputSchema || {}).slice(0, 1200), detailsError: (e && e.message) || '' });
+      }
+    }
   }
   if (res.isError) return [];
   if (onRaw) {
@@ -402,7 +421,10 @@ async function addToCart(client, products) {
   const failed = [];
   for (const call of buildAddCalls(tool, products)) {
     try {
-      const res = await client.callTool({ name: tool.name, arguments: call.args });
+      const callArgs = props(tool).context
+        ? { ...call.args, context: 'Vložení surovin pro naplánovaná jídla do nákupního košíku.' }
+        : call.args;
+      const res = await client.callTool({ name: tool.name, arguments: callArgs });
       if (res.isError) {
         const txt = resultText(res).slice(0, 200) || 'Chyba';
         call.products.forEach((p) => failed.push({ productId: p.productId, error: txt }));

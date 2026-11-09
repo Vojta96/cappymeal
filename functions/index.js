@@ -569,7 +569,7 @@ exports.rohlikMatch = onCall(ROHLIK, handle('rohlikMatch', async (request) => {
     };
     let diagLogged = 0;
     const onDiag = (d) => {
-      if (diagLogged >= 2) return;
+      if (diagLogged >= 3) return;
       diagLogged += 1;
       console.info('rohlikMatch diag:', JSON.stringify(d));
     };
