@@ -14,7 +14,7 @@ import {
   regularItems,
   shoppingListText,
 } from '../lib/meals';
-import { fillCart, matchProducts, needsReconnect } from '../services/rohlik';
+import { fillCart, getRohlikStatus, matchProducts, needsReconnect } from '../services/rohlik';
 import ProductCarousel from '../components/ProductCarousel';
 import { formatQty, leftoverText, needForServer, presetQty, sumNeed } from '../lib/quantity';
 import { arrangeCandidates, shopPrefs } from '../lib/shop';
@@ -239,6 +239,14 @@ export default function Cart() {
   }, [location.key, location.state]);
 
   const connected = !!(rohlik && rohlik.connected);
+
+  // Ask the server about the Rohlík connection once per visit (also refreshes the token; the server side
+  // will sync cart / order state from here). Best effort, the screen never waits for it.
+  useEffect(() => {
+    if (!connected) return;
+    getRohlikStatus().catch(() => {});
+  }, [connected]);
+
   const mustConnect = !connected || needsReconnect(error);
   const reconnect = (!connected && !!(rohlik && rohlik.needsReconnect)) || (connected && needsReconnect(error));
 
