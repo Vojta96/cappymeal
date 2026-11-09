@@ -573,7 +573,7 @@ exports.rohlikMatch = onCall(ROHLIK, handle('rohlikMatch', async (request) => {
       diagLogged += 1;
       console.info('rohlikMatch diag:', JSON.stringify(d));
     };
-    const search = (query) => rohlik.searchProducts(client, query, { onRaw, onDiag });
+    const search = (query) => rohlik.searchProducts(client, query, { onRaw });
     const results = new Array(items.length);
     let next = 0;
     async function worker() {
