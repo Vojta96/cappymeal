@@ -47,6 +47,7 @@ async function copyText(text) {
 /** "pro: Bolognese, Kaše" / "Pravidelná položka" */
 function mealsText(item) {
   if (item.regular) return 'Pravidelná položka';
+  if (item.extra) return 'Přidáno ručně';
   if (!item.meals || !item.meals.length) return '';
   return `pro: ${item.meals.join(', ')}`;
 }
@@ -225,6 +226,11 @@ export default function Cart() {
   const [regSel, setRegSel] = useState({}); // regular id -> bool (this shopping only)
   const [regSheet, setRegSheet] = useState(null); // 'add' | 'manage' | null
   const [toast, setToast] = useState('');
+  // One-off items added while picking products ("kdybych si na něco vzpomněl"); this shopping only.
+  const [extras, setExtras] = useState([]);
+  const [extraOpen, setExtraOpen] = useState(false);
+  const [extraName, setExtraName] = useState('');
+  const [extraAmount, setExtraAmount] = useState('');
   const clearToast = useCallback(() => setToast(''), []);
 
   // Re-apply navigation state when arriving again from the plan button.
@@ -258,15 +264,15 @@ export default function Cart() {
   const buyIngredients = all.filter((it) => !isInPantry(it, pantry));
   const home = all.filter((it) => isInPantry(it, pantry));
   // Regulars are never auto-marked as "Mám doma"; they go first.
-  const buy = [...chosenRegulars, ...buyIngredients];
+  const buy = [...extras, ...chosenRegulars, ...buyIngredients];
   // Summed need per item in base units ("Potřeba: 450 g"); null when unknown / incompatible.
   const needs = useMemo(() => {
     const out = {};
-    [...allRegulars, ...all].forEach((it) => {
+    [...extras, ...allRegulars, ...all].forEach((it) => {
       out[it.key] = sumNeed(it.amounts, it.name);
     });
     return out;
-  }, [all, allRegulars]);
+  }, [all, allRegulars, extras]);
   const shop = shopPrefs(settings);
 
   const resetMatch = () => {
@@ -352,6 +358,58 @@ export default function Cart() {
       else setToast(e.message || 'Hledání se nepovedlo');
     } finally {
       setItemBusy((b) => ({ ...b, [it.key]: false }));
+    }
+  };
+
+  /** "Přidat položku": a one-off item, searched right away (remembered product applies via its key). */
+  const addExtra = async (e) => {
+    e.preventDefault();
+    const name = extraName.trim().slice(0, 80);
+    if (!name) return;
+    const key = `extra:${name.toLowerCase().replace(/[.#$[\]/]/g, '_')}`.slice(0, 120);
+    if (buy.some((x) => x.key === key)) {
+      setToast('Tahle položka už v seznamu je');
+      return;
+    }
+    const amount = extraAmount.trim().slice(0, 40);
+    const it = { key, name, amounts: amount ? [amount] : [], meals: [], extra: true };
+    setExtras((xs) => [it, ...xs]);
+    setExtraName('');
+    setExtraAmount('');
+    setExtraOpen(false);
+    setItemBusy((b) => ({ ...b, [key]: true }));
+    try {
+      const pref = productPrefs && productPrefs[key];
+      const res = await matchProducts(
+        [
+          {
+            key,
+            name,
+            amounts: it.amounts,
+            need: needForServer(sumNeed(it.amounts, name)),
+            preferredProductId: pref ? pref.productId : undefined,
+            preferredName: pref ? pref.name : undefined,
+          },
+        ],
+        shop,
+      );
+      const r = ((res && res.results) || []).find((x) => x.key === key);
+      const arranged = arrangeCandidates((r && r.candidates) || [], pref, r && r.preferred);
+      const sel = arranged.selected;
+      setResults((m) => ({ ...m, [key]: { options: arranged.options, note: arranged.note, query: '' } }));
+      setPicks((m) => ({
+        ...m,
+        [key]: {
+          idx: sel,
+          qty: sel >= 0 ? presetQty(sumNeed(it.amounts, name), arranged.options[sel]) : 1,
+          skip: sel < 0,
+        },
+      }));
+    } catch (err) {
+      if (needsReconnect(err)) setError(err);
+      else setToast(err.message || 'Hledání se nepovedlo');
+    } finally {
+      setItemBusy((b) => ({ ...b, [key]: false }));
     }
   };
 
@@ -763,11 +821,50 @@ export default function Cart() {
               {(step === 'matched' || step === 'filling') && (
                 <>
                   <div className="stack">
-                    <div className="row--between" style={{ alignItems: 'baseline' }}>
-                      <h2 className="h-section">Vyberte produkty</h2>
-                      <button type="button" className="link-btn" onClick={resetMatch} disabled={busy}>
-                        Upravit seznam
-                      </button>
+                    <div className="cart__pick-head">
+                      <div className="row--between">
+                        <h2 className="h-section">Vyberte produkty</h2>
+                        <div className="cart__pick-actions">
+                          <button type="button" className="link-btn" onClick={resetMatch} disabled={busy}>
+                            Upravit seznam
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--sm btn--auto"
+                            onClick={() => setExtraOpen((o) => !o)}
+                            aria-expanded={extraOpen}
+                            disabled={busy}
+                          >
+                            <Icon name={extraOpen ? 'close' : 'add'} size={18} />
+                            Přidat položku
+                          </button>
+                        </div>
+                      </div>
+                      {extraOpen && (
+                        <form className="cart__extra-form" onSubmit={addExtra}>
+                          <input
+                            className="input"
+                            value={extraName}
+                            onChange={(e) => setExtraName(e.target.value)}
+                            maxLength={80}
+                            placeholder="Co přikoupit (např. káva, toaletní papír)"
+                            aria-label="Název položky"
+                            // eslint-disable-next-line jsx-a11y/no-autofocus
+                            autoFocus
+                          />
+                          <input
+                            className="input cart__extra-amount"
+                            value={extraAmount}
+                            onChange={(e) => setExtraAmount(e.target.value)}
+                            maxLength={40}
+                            placeholder="Množství"
+                            aria-label="Množství (volitelné)"
+                          />
+                          <button type="submit" className="btn btn--sm btn--auto" disabled={!extraName.trim()}>
+                            Přidat
+                          </button>
+                        </form>
+                      )}
                     </div>
                     <div className="list-card cart__matched">
                       {buy.map((it) => (
